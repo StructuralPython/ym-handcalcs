@@ -12,9 +12,14 @@ with symbolic, substituted and computed values.
 Install it with YMPrint's `hc` extra:
 
 ```bash
-uv tool install "ymprint[hc]"
-# or
 pip install "ymprint[hc]"
+```
+
+ym-handcalcs needs handcalcs 2.0, which is currently a pre-release. pip installs it
+automatically; uv only installs a pre-release you name, so add it with `--with`:
+
+```bash
+uv tool install "ymprint[hc]" --with "handcalcs>=2.0.0rc1"
 ```
 
 YMPrint registers the `_hc` block automatically when ym-handcalcs is installed.
@@ -28,7 +33,7 @@ _vars:
 
 Beam design:
   - _hc: |
-      # Factored load
+      ## Factored load
       L = 6.0  # span, m
       w_f = 1.25 * w_DL + 1.5 * w_LL
       M_f = w_f * L**2 / 8
@@ -37,8 +42,8 @@ Beam design:
 
 The source runs in the document's `_vars`, like a `_py` block: it can use values from
 `_vars` and earlier blocks, and later blocks (and `{{ }}` interpolation) can use its
-results. Comments are rendered as headings (`# ...`), prose and inline comments as in
-handcalcs, and `# hc:` commands work as usual.
+results. As in handcalcs, `## ...` comments are headings, `# ...` comments are prose,
+inline comments annotate their line, and `# hc:` commands work as usual.
 
 The value is either the source as a string, or a mapping:
 
