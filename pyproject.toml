@@ -25,6 +25,7 @@ name = "ym_handcalcs"
 
 [dependency-groups]
 dev = [
+    "numpy>=2.3.0",
     "pytest>=9.0.3",
     "ymprint>=0.6.0",
 ]

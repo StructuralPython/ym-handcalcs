@@ -752,3 +752,63 @@ def test_line_continuations_continue_the_value_on_an_indented_line(source, value
 def test_a_continued_calc_keeps_its_comment():
     lines = [f for _, f in leaves(render("a = 2\nb = 3\nc = a * b \\\n    - b  # net\n")["story"]) if isinstance(f, CalcLine)]
     assert "(net)" in lines[-1].comment
+
+
+# -- matrices --------------------------------------------------------------------
+
+from ym_handcalcs.flowables import MathRow, Matrix, inline_matrices, matrix_segments
+from ym_handcalcs.markers import MATRIX_CLOSE, MATRIX_OPEN
+
+
+def matrix_cells(story):
+    """The value cells (built at 504 pt) of every calc line in ``story``."""
+    build(story, 504)
+    for _, line in leaves(story):
+        if isinstance(line, CalcLine):
+            _, cells, _ = line.choose(504, line.target_width())
+            yield from (row[2] for row in cells)
+
+
+def test_a_2d_array_is_drawn_as_a_matrix():
+    pytest.importorskip("numpy")
+    renderer = ReportLabRenderer()
+    story = HandCalcs(renderer=renderer)("import numpy as np\nA = np.array([[1, 2], [3, 4]])\n")["story"]
+    assert list(renderer.matrices.values()) == [[["1", "2"], ["3", "4"]]]
+    rows = [cell for cell in matrix_cells(story) if isinstance(cell, MathRow)]
+    assert len(rows) == 1
+    assert [type(part) for part in rows[0].parts] == [Paragraph, Matrix]
+
+
+def test_a_large_matrix_is_elided():
+    pytest.importorskip("numpy")
+    renderer = ReportLabRenderer()
+    HandCalcs(renderer=renderer)("import numpy as np\nD = np.arange(144).reshape(12, 12)\n")
+    (rows,) = renderer.matrices.values()
+    assert len(rows) == 7 and rows[3][0] == "⋮" and rows[0][3] == "⋯"
+
+
+@pytest.mark.parametrize("width", [504, 252])
+def test_matrices_build_into_a_pdf(width, tmp_path):
+    pytest.importorskip("numpy")
+    source = (
+        "import numpy as np\nA = np.array([[1, 2], [3, 4]])\nB = np.array([[5, 6], [7, 8]])\n"
+        "C = A @ B  # product\nD = np.arange(144).reshape(12, 12)\n"
+    )
+    result = render(source)
+    text = " ".join(" ".join(pdf_pages(build_pdf(result, tmp_path / "m.pdf", frame_width=width))).split())
+    assert "19 22" in text and "43 50" in text and "143" in text
+
+
+def test_matrix_segments_rebalance_the_tags_around_a_matrix():
+    token = f"{MATRIX_OPEN}7{MATRIX_CLOSE}"
+    pieces = matrix_segments(f'x = <font color="#000000"><b>{token}</b></font> (note)')
+    assert pieces == [
+        ("text", 'x = <font color="#000000"><b></b></font>'),
+        ("matrix", "7", '<font color="#000000"><b>', "</b></font>"),
+        ("text", '<font color="#000000"><b></b></font> (note)'),
+    ]
+
+
+def test_matrices_are_written_inline_where_they_cannot_be_drawn():
+    token = f"{MATRIX_OPEN}1{MATRIX_CLOSE}"
+    assert inline_matrices(f"A = {token}", {"1": [["1", "2"], ["3", "4"]]}) == "A = [[1, 2], [3, 4]]"

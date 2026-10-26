@@ -20,16 +20,23 @@ from xml.sax.saxutils import escape
 from reportlab.lib.styles import StyleSheet1
 from reportlab.platypus import Flowable, HRFlowable, KeepTogether, PageBreak, Paragraph, Spacer
 
-from handcalcs.renderers.base import PAGE_BREAK, BaseRenderContext, BaseRenderer, RenderContext, render_condition
+from handcalcs.renderers.base import (
+    PAGE_BREAK,
+    BaseRenderContext,
+    BaseRenderer,
+    RenderContext,
+    elide_matrix,
+    render_condition,
+)
 
-from .flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid
+from .flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid, inline_matrices
 from .fonts import Fonts, missing_fonts, register_families
-from .markers import CalcComponents, Grid, Tagged
+from .markers import MATRIX_CLOSE, MATRIX_OPEN, CalcComponents, Grid, Tagged
 from .styles import Metrics, Palette, build_stylesheet
 from .symbols import register_symbol_rules
 
 # Node type imports only used for typing
-from handcalcs.parsing.nodes import Constant
+from handcalcs.parsing.nodes import Constant, Matrix
 from handcalcs.parsing.inline_nodes import InlineComment
 from handcalcs.parsing.line_nodes import CommentLine, ExprLine, Heading, Import
 from handcalcs.parsing.block_nodes import CommentsBlock, ElseBlock, ForBlock, IfBlock
@@ -53,6 +60,8 @@ def _unwrap(flowable: Flowable) -> Flowable:
 
 # Heading bookmark keys must be unique across every render in a document.
 _ANCHORS = itertools.count(1)
+# Keys of the matrices a render puts in ``ReportLabRenderer.matrices``.
+_MATRICES = itertools.count(1)
 
 
 def plain_text(markup: str) -> str:
@@ -100,6 +109,8 @@ class ReportLabRenderer(BaseRenderer):
         register_families(fonts)
         self.palette = palette
         self.fonts = fonts
+        # Rows of cell markup for each matrix token in the rendered markup.
+        self.matrices: dict[str, list[list[str]]] = {}
         self.metrics = Metrics(base_size)
         self.stylesheet = stylesheet if stylesheet is not None else build_stylesheet(
             palette, fonts, base_size
@@ -225,7 +236,7 @@ class ReportLabRenderer(BaseRenderer):
         return self.stylesheet[name]
 
     def line_flowable(self, text: str, depth: int) -> Flowable:
-        return Paragraph(text, self.style("hcCalc"))
+        return Paragraph(inline_matrices(text, self.matrices), self.style("hcCalc"))
 
     def calc_markup(self, calc: CalcComponents) -> str:
         """
@@ -258,13 +269,14 @@ class ReportLabRenderer(BaseRenderer):
         return CalcLine(
             columns, comment, forced_grid=forced_grid, styles=styles,
             result_markup=self.result_markup, table_style=self.style("hcCalcGrid"),
-            pad=self.metrics.base_size * 0.3,
+            pad=self.metrics.base_size * 0.3, matrices=self.matrices,
         )
 
     def header_flowable(self, header: str, depth: int) -> Flowable:
         marker = f'<font color="{self.palette.accent}">\u25B8</font>\u2002'
         return BreakingParagraph(
-            marker + header, self.style("hcBlockHeader"), background=self.palette.color("accent_soft")
+            marker + inline_matrices(header, self.matrices), self.style("hcBlockHeader"),
+            background=self.palette.color("accent_soft"),
         )
 
     def tagged_flowables(self, item: Tagged, depth: int) -> list[Flowable]:
@@ -316,7 +328,7 @@ class ReportLabRenderer(BaseRenderer):
                 cells, cols, self.cell_styles(), self.style("hcParams"),
                 gap=m.base_size * 1.6, pad=m.base_size * 0.3,
                 zebra=self.palette.color("zebra"),
-                space_before=m.gap * 2, space_after=m.gap,
+                space_before=m.gap * 2, space_after=m.gap, matrices=self.matrices,
             )
         # A ``# hc: -m`` calc: ``[target, '=', sym]``, ``['', '=', num]``, ... The
         # last value may end with the inline comment. A row with no '=' continues
@@ -394,6 +406,19 @@ def render_import(renderer: RLR, node: Import, base_context: BRC) -> Tagged:
     else:
         text = f"import {names}"
     return Tagged(escape(text), "import")
+
+
+@RLR.register("matrix")
+def render_matrix(renderer: RLR, node: Matrix, base_context: BRC) -> str:
+    """
+    A 2-D array, as a token for its rows (elided like a collection). Value
+    cells draw it as a bracketed ``Matrix`` (see ``flowables.MathRow``).
+    """
+    rows = [[renderer.render(cell, base_context) for cell in row] for row in node.rows]
+    rows = elide_matrix(rows, base_context, "⋯", "⋮")
+    key = str(next(_MATRICES))
+    renderer.matrices[key] = [[str(cell) for cell in row] for row in rows]
+    return f"{MATRIX_OPEN}{key}{MATRIX_CLOSE}"
 
 
 @RLR.register("calc_line:post")
