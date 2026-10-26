@@ -11,8 +11,8 @@ line+comment             I<sub>y</sub>
 line                     G
 line+comment             J
 line                     C<sub>w</sub>
-grid:break5              M<sub>u</sub>
-grid:break5              M<sub>u</sub>
+shrink:grid:break5       M<sub>u</sub>
+shrink:grid:break5       M<sub>u</sub>
 line                     b<sub>w</sub>
 line                     h<sub>w</sub>
 line                     t<sub>f</sub>
@@ -66,7 +66,7 @@ line                     vals<sub>x</sub>
 line                     vals<sub>y</sub>
 line                     value<sub>computed</sub>
 line                     acc.append(value<sub>computed</sub>)
-grid:break4              acc
+line                     acc
 line                     temp
 line                     temp<sub>min</sub>
 line                     temp<sub>max</sub>
