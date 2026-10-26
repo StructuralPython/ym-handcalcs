@@ -770,6 +770,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "numpy" },
     { name = "pytest" },
     { name = "ymprint" },
 ]
@@ -782,6 +783,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "numpy", specifier = ">=2.3.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ymprint", specifier = ">=0.6.0" },
 ]

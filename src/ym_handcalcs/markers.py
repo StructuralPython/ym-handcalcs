@@ -51,3 +51,10 @@ class Grid:
 
     kind: str
     rows: list = field(default_factory=list)
+
+
+# A 2-D array inside paragraph markup: ``MATRIX_OPEN + id + MATRIX_CLOSE``, where
+# ``id`` keys the renderer's ``matrices`` (rows of cell markup). Paragraphs cannot
+# hold a table, so value cells with a matrix are built as a ``MathRow``.
+MATRIX_OPEN = ""
+MATRIX_CLOSE = ""

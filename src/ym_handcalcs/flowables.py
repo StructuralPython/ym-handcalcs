@@ -1,7 +1,13 @@
 """Custom flowables used by the ReportLab renderer."""
 from __future__ import annotations
 
+import re
+
+from reportlab.lib.colors import HexColor
 from reportlab.platypus import Flowable, Paragraph, Table
+
+from .breaking import NBSP
+from .markers import MATRIX_CLOSE, MATRIX_OPEN
 
 
 def natural_width(paragraph: Paragraph) -> float:
@@ -173,8 +179,10 @@ class ParamGrid(_TableHost):
     align = "CENTER"
 
     def __init__(self, cells: list, cols: int, styles: dict, table_style, gap: float,
-                 pad: float, zebra=None, space_before: float = 0.0, space_after: float = 0.0):
+                 pad: float, zebra=None, space_before: float = 0.0, space_after: float = 0.0,
+                 matrices: dict | None = None):
         super().__init__(space_before, space_after)
+        self.matrices = matrices
         self.cells = [cell for cell in cells if cell is not None]
         self.cols = max(1, cols)
         self.styles = styles
@@ -185,13 +193,13 @@ class ParamGrid(_TableHost):
         self.with_comments = any(len(cell) > 3 and cell[3] for cell in self.cells)
         self.cols_used = self.cols
 
-    def _cell_paragraphs(self, cell) -> list[Paragraph]:
+    def _cell_paragraphs(self, cell) -> list[Flowable]:
         parts = [str(part) for part in cell] + ["", "", "", ""]
         ident, eq, val, comment = parts[:4]
         paras = [
             Paragraph(ident, self.styles["right"]),
             Paragraph(eq, self.styles["center"]),
-            Paragraph(val, self.styles["left"]),
+            value_cell(val, self.styles["left"], self.matrices),
         ]
         if self.with_comments:
             paras.append(Paragraph(comment, self.styles["comment"]))
@@ -211,7 +219,7 @@ class ParamGrid(_TableHost):
                 else:
                     row.extend([""] * per_cell)
             rows.append(row)
-        para_rows = [[c if isinstance(c, Paragraph) else Paragraph("", self.styles["left"]) for c in r] for r in rows]
+        para_rows = [[c if isinstance(c, Flowable) else Paragraph("", self.styles["left"]) for c in r] for r in rows]
         widths = _column_widths(para_rows, self.pad)
         spacer_cols = [idx * (per_cell + 1) - 1 for idx in range(1, cols)]
         for col in spacer_cols:
@@ -327,9 +335,11 @@ class CalcLine(Flowable):
 
     def __init__(self, columns: list[str], comment, *, forced_grid: bool, styles: dict,
                  result_markup, table_style, pad: float,
-                 min_scale: float = 0.85):
+                 min_scale: float = 0.85, matrices: dict | None = None):
         super().__init__()
         self.columns = list(columns)
+        # Rows of cell markup for the matrix tokens in ``columns`` (see ``MathRow``).
+        self.matrices = matrices
         self.comment = comment or ""
         self.forced_grid = forced_grid
         self.styles = styles
@@ -391,11 +401,12 @@ class CalcLine(Flowable):
         if self.comment and not comment_row:
             rows[-1][2] = f"{rows[-1][2]} {self.comment}"
         cells = [
-            [Paragraph(i, right) if i else "", Paragraph(e, center) if e else "", Paragraph(v, value_style)]
+            [Paragraph(i, right) if i else "", Paragraph(e, center) if e else "",
+             value_cell(v, value_style, self.matrices)]
             for i, e, v in rows
         ]
         if comment_row:
-            cells.append(["", "", Paragraph(self.comment, value_style)])
+            cells.append(["", "", value_cell(self.comment, value_style, self.matrices)])
         commands = []
         value_rows = cells
         eq_width = self.eq_width()
@@ -409,6 +420,11 @@ class CalcLine(Flowable):
             target_fits = natural_width(cells[0][0]) <= id_width - 2 * self.pad + 0.01
         else:
             target_fits = True
+        # A row holding a matrix is centred on it, so its target and '=' sit at
+        # the matrix's middle, level with the text around the matrix.
+        for idx, row in enumerate(cells):
+            if isinstance(row[2], MathRow):
+                commands.append(("VALIGN", (0, idx), (-1, idx), "MIDDLE"))
         if comment_row:
             value_rows = value_rows[:-1]
         if kind in ("line", "line+comment"):
@@ -620,3 +636,194 @@ def _is_multirow(line: CalcLine, layout: str) -> bool:
     """True for a line laid out over several ``=`` rows (not a one-row line)."""
     base = layout.split(":", 1)[1] if layout.startswith(("shrink:", "overflow:")) else layout
     return line.forced_grid or not base.startswith("line")
+
+
+## MATRICES
+
+_MARKUP = re.compile(rf"<(/?)([a-zA-Z]+)[^>]*?(/?)>|{MATRIX_OPEN}(\d+){MATRIX_CLOSE}")
+
+
+def has_matrix(markup: str) -> bool:
+    return MATRIX_OPEN in markup
+
+
+def matrix_segments(markup: str) -> list[tuple[str, str]]:
+    """
+    Split ``markup`` at its matrix tokens into ``("text", markup)`` and
+    ``("matrix", id)`` pieces. Tags open across a token are closed before it and
+    reopened after it, so every text piece is balanced; each matrix piece also
+    carries the tags open around it (``("matrix", id, open, close)``), so a
+    matrix result keeps the result's colour and weight.
+    """
+    pieces: list = []
+    stack: list[tuple[str, str]] = []
+    current = ""
+    position = 0
+
+    def opening() -> str:
+        return "".join(tag for _, tag in stack)
+
+    def closing() -> str:
+        return "".join(f"</{name}>" for name, _ in reversed(stack))
+
+    for match in _MARKUP.finditer(markup):
+        current += markup[position:match.start()]
+        position = match.end()
+        if match.group(4) is not None:
+            pieces.append(("text", current + closing()))
+            pieces.append(("matrix", match.group(4), opening(), closing()))
+            current = opening()
+            continue
+        current += match.group(0)
+        is_close, name, self_closing = match.group(1), match.group(2), match.group(3)
+        if self_closing:
+            continue
+        if is_close:
+            if stack and stack[-1][0] == name:
+                stack.pop()
+        else:
+            stack.append((name, match.group(0)))
+    pieces.append(("text", current + markup[position:]))
+    return [p for p in pieces if p[0] == "matrix" or re.sub(r"<[^>]+>", "", p[1])]
+
+
+def inline_matrices(markup: str, matrices: dict) -> str:
+    """``markup`` with each matrix token written out inline: ``[[1, 2], [3, 4]]``."""
+    def inline(match: re.Match) -> str:
+        rows = matrices[match.group(1)]
+        return "[" + ", ".join("[" + ", ".join(row) + "]" for row in rows) + "]"
+
+    return re.sub(rf"{MATRIX_OPEN}(\d+){MATRIX_CLOSE}", inline, markup)
+
+
+def _flat(style, name: str, **kwargs):
+    """``style`` with no indents or paragraph spacing, for a piece of a ``MathRow``."""
+    return style.clone(f"{style.name}{name}", leftIndent=0, firstLineIndent=0,
+                       rightIndent=0, spaceBefore=0, spaceAfter=0, **kwargs)
+
+
+_BACK_COLOR = re.compile(r'\s+backColor="([^"]*)"')
+
+
+class Matrix(Flowable):
+    """
+    A 2-D array: cells right-aligned in columns, between square brackets. A
+    ``backColor`` in the tags around it (the result highlight) is drawn once,
+    behind the whole matrix, rather than behind each cell.
+    """
+
+    def __init__(self, rows: list[list[str]], style, open_tags: str = "", close_tags: str = ""):
+        super().__init__()
+        background = _BACK_COLOR.search(open_tags)
+        self.background = background.group(1) if background else None
+        open_tags = _BACK_COLOR.sub("", open_tags)
+        cell_style = _flat(style, "@matrix")
+        self.cells = [
+            [Paragraph(f"{open_tags}{cell}{close_tags}", cell_style) for cell in row] for row in rows
+        ]
+        self.color = style.textColor
+        size = style.fontSize
+        self.col_gap = size * 0.6
+        self.inset = size * 0.3  # between a bracket and the cells
+        self.tick = size * 0.25  # the bracket's top and bottom serifs
+        self.line_width = max(0.5, size * 0.06)
+
+    def _measure(self) -> None:
+        ncols = max((len(row) for row in self.cells), default=0)
+        self.col_widths = [
+            max((natural_width(row[c]) for row in self.cells if c < len(row)), default=0.0)
+            for c in range(ncols)
+        ]
+        self.row_heights = [
+            max((cell.wrap(1e6, 1e6)[1] for cell in row), default=0.0) for row in self.cells
+        ]
+
+    def wrap(self, avail_width, avail_height):
+        self._measure()
+        content = sum(self.col_widths) + self.col_gap * max(0, len(self.col_widths) - 1)
+        self.width = content + 2 * self.inset
+        self.height = sum(self.row_heights)
+        return self.width, self.height
+
+    def draw(self):
+        canvas = self.canv
+        if self.background is not None:
+            canvas.saveState()
+            canvas.setFillColor(HexColor(self.background))
+            canvas.roundRect(0, 0, self.width, self.height, 3, stroke=0, fill=1)
+            canvas.restoreState()
+        y = self.height
+        for row, height in zip(self.cells, self.row_heights):
+            y -= height
+            x = self.inset
+            for cell, col_width in zip(row, self.col_widths):
+                cell.wrap(1e6, 1e6)
+                cell.drawOn(canvas, x + col_width - natural_width(cell), y)
+                x += col_width + self.col_gap
+        canvas.saveState()
+        canvas.setStrokeColor(self.color)
+        canvas.setLineWidth(self.line_width)
+        for x, tick in ((0, self.tick), (self.width, -self.tick)):
+            path = canvas.beginPath()
+            path.moveTo(x + tick, self.height)
+            path.lineTo(x, self.height)
+            path.lineTo(x, 0)
+            path.lineTo(x + tick, 0)
+            canvas.drawPath(path, stroke=1, fill=0)
+        canvas.restoreState()
+
+
+class MathRow(Flowable):
+    """
+    Value markup that contains matrices: its text pieces and ``Matrix`` pieces
+    side by side on one row, centred vertically. It never wraps; like a
+    paragraph it reports its line widths (one line), so ``natural_width`` and
+    ``fits_width`` measure it and a calc line falls back to another layout
+    when it is too wide.
+    """
+
+    def __init__(self, markup: str, style, matrices: dict):
+        super().__init__()
+        self.style = style
+        text_style = _flat(style, "@row")
+        self.parts: list[Flowable] = []
+        for piece in matrix_segments(markup):
+            if piece[0] == "text":
+                # A paragraph drops the spaces at its ends; keep the ones that
+                # separate this piece from a matrix (`` = ``, `` @ ``).
+                text = re.sub(r"^((?:<[^>]+>)*) ", rf"\1{NBSP}", piece[1])
+                text = re.sub(r" ((?:<[^>]+>)*)$", rf"{NBSP}\1", text)
+                self.parts.append(Paragraph(text, text_style))
+            else:
+                _, key, open_tags, close_tags = piece
+                self.parts.append(Matrix(matrices[key], style, open_tags, close_tags))
+        self._sizes: list[tuple[float, float]] = []
+
+    def wrap(self, avail_width, avail_height):
+        self._sizes = []
+        for part in self.parts:
+            if isinstance(part, Paragraph):
+                width = natural_width(part)
+                _, height = part.wrap(width + 0.01, 1e6)
+            else:
+                width, height = part.wrap(1e6, 1e6)
+            self._sizes.append((width, height))
+        self.width = sum(w for w, _ in self._sizes)
+        self.height = max((h for _, h in self._sizes), default=0.0)
+        return self.width, self.height
+
+    def getActualLineWidths0(self) -> list[float]:
+        return [self.width]
+
+    def draw(self):
+        x = 0.0
+        for part, (width, height) in zip(self.parts, self._sizes):
+            part.drawOn(self.canv, x, (self.height - height) / 2)
+            x += width
+
+
+def value_cell(markup: str, style, matrices: dict | None = None) -> Flowable:
+    """A ``Paragraph`` for ``markup``, or a ``MathRow`` when it holds a matrix."""
+    if matrices and has_matrix(markup):
+        return MathRow(markup, style, matrices)
+    return Paragraph(markup, style)

@@ -28,7 +28,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import StyleSheet1
 from reportlab.platypus import (
-    Flowable, HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table,
+    Flowable, HRFlowable, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table,
 )
 
 from handcalcs import HandCalcs
@@ -162,10 +162,14 @@ def test_renderer_builds_on_base_renderer_only():
     assert ReportLabRenderer.__bases__ == (BaseRenderer,)
 
 
+SHARED_RENDERER_MODULES = {"handcalcs.renderers.base", "handcalcs.renderers.identifiers"}
+
+
 def test_no_module_imports_another_handcalcs_renderer():
-    # Only the BaseRenderer API (handcalcs.renderers.base) and the parser nodes
-    # may be imported, so the HTML, LaTeX, Markdown and plain-text renderers can
-    # change freely.
+    # Only the BaseRenderer API (handcalcs.renderers.base), the shared identifier
+    # parser (handcalcs.renderers.identifiers) and the parser nodes may be
+    # imported, so the HTML, LaTeX, Markdown and plain-text renderers can change
+    # freely.
     import ast
     import ym_handcalcs
 
@@ -180,7 +184,7 @@ def test_no_module_imports_another_handcalcs_renderer():
                 continue
             for module in modules:
                 if module.startswith("handcalcs.renderers"):
-                    assert module == "handcalcs.renderers.base", f"{path.name} imports {module}"
+                    assert module in SHARED_RENDERER_MODULES, f"{path.name} imports {module}"
 
 
 def test_missing_fonts_raise_a_helpful_error():
@@ -661,3 +665,150 @@ def test_row_split_keeps_the_rule_on_both_halves():
     for half in halves:
         half.wrap(252, 1000)
         assert any(cmd == "LINEBEFORE" for cmd, *_ in half._linecmds)
+
+
+# -- identifiers and lookups (handcalcs' shared identifier rules) ----------------
+
+def test_identifier_accents_primes_and_star():
+    text = dump(render("x_hat = 1\ny_dot = 2\nz_ddot = 3\nM_star = 4\nf_prime = 5\nq_bar = 6\n")["story"])
+    for symbol in ("x̂ = 1", "ẏ = 2", "z̈ = 3", "M<sup>*</sup> = 4", "f′ = 5", "q̅ = 6"):
+        assert f"CalcLine: {symbol}\n" in text
+
+
+def test_identifier_subscripts_are_siblings_and_greek_prefixes_are_letters():
+    text = dump(render("N_pl_Rd = 1\nDeltaH = 2\na__b = 3\nc___d = 4\n")["story"])
+    assert "CalcLine: N<sub>pl,Rd</sub> = 1\n" in text
+    assert "CalcLine: ΔH = 2\n" in text
+    assert "CalcLine: a b = 3\n" in text
+    assert "CalcLine: c_d = 4\n" in text
+
+
+def test_index_and_key_lookups_are_subscripts():
+    source = "xs = [10, 20]\nloads = {'dead': 5}\nc = xs[0] + loads['dead']\n"
+    text = dump(render(source)["story"])
+    assert "CalcLine: c = xs<sub>0</sub> + loads<sub>dead</sub> = 10 + 5 = " in text
+
+
+def test_a_computed_index_is_shown_in_brackets():
+    text = dump(render("xs = [10, 20]\ni = 0\nc = xs[i + 1]\n")["story"])
+    assert "xs[i + 1]" in text
+
+
+def test_cube_roots_and_factorials():
+    text = dump(render("import math\na = 27\nb = math.cbrt(a)\nc = math.factorial(4)\nn = 3\nd = math.factorial(n + 1)\n")["story"])
+    assert "CalcLine: b = ∛(a) = ∛(27) = " in text
+    assert "CalcLine: c = 4! = " in text
+    assert "CalcLine: d = (n + 1)! = (3 + 1)! = " in text
+
+
+def test_strings_are_shown_in_curly_quotes_and_escaped():
+    text = dump(render("s = 'a<b'\nt = s\n")["story"])
+    assert "CalcLine: s = “a&lt;b”\n" in text
+    assert "CalcLine: t = s = " in text and "“a&lt;b”" in text.split("CalcLine: t = s = ")[1]
+
+
+# -- comment commands and files ------------------------------------------------
+
+def pdf_pages(path) -> list[str]:
+    from pypdf import PdfReader
+
+    return [page.extract_text() for page in PdfReader(path).pages]
+
+
+@pytest.mark.parametrize("source", [
+    "a = 1\n# hc: --pagebreak\nb = 2\n",
+    "a = 1\nb = 2\n# hc: --pagebreak\nc = 3\nd = 4\n",
+    "a = 1\nif a > 0:\n    b = 2\n    # hc: --pagebreak\n    c = 3\n",
+])
+def test_pagebreak_starts_a_new_page(source, tmp_path):
+    result = render(source)
+    assert any(isinstance(f, PageBreak) for _, f in leaves(result["story"]))
+    pages = pdf_pages(build_pdf(result, tmp_path / "out.pdf"))
+    assert len(pages) == 2
+
+
+def test_check_marks_pass_and_fail():
+    text = dump(render("a = 2\nb = 3\nok = a < b  # hc: --check\nbad = a > b  # hc: --check\n")["story"])
+    assert '<font color="#1A7F37"><b>✓</b></font>' in text.split("ok = ")[1].split("\n")[0]
+    assert '<font color="#CF222E"><b>✗</b></font>' in text.split("bad = ")[1].split("\n")[0]
+
+
+def test_destination_writes_a_pdf(tmp_path):
+    path = HandCalcs(renderer=ReportLabRenderer())("a = 2\nb = a * 3\n", destination=tmp_path / "calcs.pdf")
+    assert path == tmp_path / "calcs.pdf"
+    assert "b = a · 3 = 2 · 3 = 6" in " ".join(pdf_pages(path)[0].split())
+
+
+@pytest.mark.parametrize("source, values", [
+    ("a = 2\nb = 3\nc = a * b + \\\n    b\n", ["a · b +<br/>  b", "2 · 3 +<br/>  3", "9"]),
+    ("a = 2\nb = 3\nc = a * b \\\n    - b  # net\n", ["a · b<br/>  - b", "2 · 3<br/>  - 3", "3"]),
+])
+def test_line_continuations_continue_the_value_on_an_indented_line(source, values):
+    lines = [f for _, f in leaves(render(source)["story"]) if isinstance(f, CalcLine)]
+    assert lines[-1].columns == ["c", *values]
+    assert lines[-1].forced_grid
+
+
+def test_a_continued_calc_keeps_its_comment():
+    lines = [f for _, f in leaves(render("a = 2\nb = 3\nc = a * b \\\n    - b  # net\n")["story"]) if isinstance(f, CalcLine)]
+    assert "(net)" in lines[-1].comment
+
+
+# -- matrices --------------------------------------------------------------------
+
+from ym_handcalcs.flowables import MathRow, Matrix, inline_matrices, matrix_segments
+from ym_handcalcs.markers import MATRIX_CLOSE, MATRIX_OPEN
+
+
+def matrix_cells(story):
+    """The value cells (built at 504 pt) of every calc line in ``story``."""
+    build(story, 504)
+    for _, line in leaves(story):
+        if isinstance(line, CalcLine):
+            _, cells, _ = line.choose(504, line.target_width())
+            yield from (row[2] for row in cells)
+
+
+def test_a_2d_array_is_drawn_as_a_matrix():
+    pytest.importorskip("numpy")
+    renderer = ReportLabRenderer()
+    story = HandCalcs(renderer=renderer)("import numpy as np\nA = np.array([[1, 2], [3, 4]])\n")["story"]
+    assert list(renderer.matrices.values()) == [[["1", "2"], ["3", "4"]]]
+    rows = [cell for cell in matrix_cells(story) if isinstance(cell, MathRow)]
+    assert len(rows) == 1
+    assert [type(part) for part in rows[0].parts] == [Paragraph, Matrix]
+
+
+def test_a_large_matrix_is_elided():
+    pytest.importorskip("numpy")
+    renderer = ReportLabRenderer()
+    HandCalcs(renderer=renderer)("import numpy as np\nD = np.arange(144).reshape(12, 12)\n")
+    (rows,) = renderer.matrices.values()
+    assert len(rows) == 7 and rows[3][0] == "⋮" and rows[0][3] == "⋯"
+
+
+@pytest.mark.parametrize("width", [504, 252])
+def test_matrices_build_into_a_pdf(width, tmp_path):
+    pytest.importorskip("numpy")
+    source = (
+        "import numpy as np\nA = np.array([[1, 2], [3, 4]])\nB = np.array([[5, 6], [7, 8]])\n"
+        "C = A @ B  # product\nD = np.arange(144).reshape(12, 12)\n"
+    )
+    result = render(source)
+    text = " ".join(" ".join(pdf_pages(build_pdf(result, tmp_path / "m.pdf", frame_width=width))).split())
+    assert "19 22" in text and "43 50" in text and "143" in text
+
+
+def test_matrix_segments_rebalance_the_tags_around_a_matrix():
+    token = f"{MATRIX_OPEN}7{MATRIX_CLOSE}"
+    pieces = matrix_segments(f'x = <font color="#000000"><b>{token}</b></font> (note)')
+    assert pieces == [
+        ("text", 'x = <font color="#000000"><b></b></font>'),
+        ("matrix", "7", '<font color="#000000"><b>', "</b></font>"),
+        ("text", '<font color="#000000"><b></b></font> (note)'),
+    ]
+
+
+def test_matrices_are_written_inline_where_they_cannot_be_drawn():
+    token = f"{MATRIX_OPEN}1{MATRIX_CLOSE}"
+    assert inline_matrices(f"A = {token}", {"1": [["1", "2"], ["3", "4"]]}) == "A = [[1, 2], [3, 4]]"
