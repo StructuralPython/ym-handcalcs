@@ -7,42 +7,42 @@ ReportLab paragraphs take a small XML dialect (``<sub>``, ``<sup>``, ``<font>``,
 directly. Nothing is borrowed from another renderer: a change to the HTML or
 LaTeX output can never leak into a PDF.
 
+Identifiers are parsed with handcalcs' shared identifier rules
+(``handcalcs.renderers.identifiers``), so they follow the same conventions as
+every other renderer.
+
 ``register_symbol_rules`` attaches the rules to a renderer class. Rules on one
-node type run in registration order, so the order below matters: Greek names
-are swapped before the subscript rule splits an identifier on ``_``.
+node type run in registration order, so the order below matters.
 """
 from __future__ import annotations
 
-from handcalcs.parsing.nodes import Name
+from xml.sax.saxutils import escape
+
+from handcalcs.parsing.nodes import Name, Subscript
 from handcalcs.parsing.inline_nodes import FunctionCall
 from handcalcs.parsing.operator_nodes import HcBinOp, HcCompOp, PowOp
-from handcalcs.renderers.base import OP_PRECEDENCE, BaseRenderContext
+from handcalcs.renderers.base import (
+    OP_PRECEDENCE,
+    BaseRenderContext,
+    render_subscript as render_bracketed_subscript,
+    subscript_value,
+)
+from handcalcs.renderers.identifiers import (
+    GREEK_UNICODE,
+    Symbol,
+    identifier_options,
+    indexed_symbol,
+    is_identifier,
+    parse_identifier,
+)
 
 from .breaking import unbreakable
 
 BRC = BaseRenderContext
 
-GREEK = {
-    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε",
-    "varepsilon": "ϵ", "zeta": "ζ", "eta": "η", "theta": "θ", "vartheta": "ϑ",
-    "iota": "ι", "kappa": "κ", "lamb": "λ", "mu": "μ", "nu": "ν", "xi": "ξ",
-    "omicron": "ο", "pi": "π", "varpi": "ϖ", "rho": "ρ", "varrho": "ϱ",
-    "sigma": "σ", "varsigma": "ς", "tau": "τ", "upsilon": "υ", "phi": "φ",
-    "varphi": "ϕ", "chi": "χ", "psi": "ψ", "omega": "ω",
-    "Alpha": "Α", "Beta": "Β", "Gamma": "Γ", "Delta": "Δ", "Epsilon": "Ε",
-    "Zeta": "Ζ", "Eta": "Η", "Theta": "Θ", "Iota": "Ι", "Kappa": "Κ",
-    "Lamb": "Λ", "Mu": "Μ", "Nu": "Ν", "Xi": "Ξ", "Omicron": "Ο", "Pi": "Π",
-    "Rho": "Ρ", "Sigma": "Σ", "Tau": "Τ", "Upsilon": "Υ", "Phi": "Φ",
-    "Chi": "Χ", "Psi": "Ψ", "Omega": "Ω",
-}
-
-# ``x_hat_`` -> x̂, ``x_prime_`` -> x′, ``x_bar_`` -> x̅, ``x_star_`` -> x*.
-ACCENTS = {
-    "_hat_": "̂_",
-    "_prime_": "′_",
-    "_star_": "<sup>*</sup>_",
-    "_bar_": "̅_",
-}
+# What an accent component adds after the symbol it decorates.
+ACCENT_MARKS = {"hat": "\u0302", "bar": "\u0305", "dot": "\u0307", "ddot": "\u0308"}
+PRIME_MARK = "\u2032"
 
 # Comparison symbols as paragraph markup. ``<`` and ``>`` must be entities.
 COMPARISONS = {"<": "&lt;", "<=": "&le;", ">": "&gt;", ">=": "&ge;", "!=": "≠"}
@@ -50,33 +50,55 @@ COMPARISONS = {"<": "&lt;", "<=": "&le;", ">": "&gt;", ">=": "&ge;", "!=": "≠"
 
 ## NAMES (symbolic column only: the numeric column shows values)
 
-def swap_greek(renderer, node: Name, base_context: BRC) -> Name:
-    """Replace each ``_``-separated part of an identifier that names a Greek letter."""
-    parts = node.identifier.split("_")
-    node.identifier = "_".join(GREEK.get(part, part) for part in parts)
-    return node
+def rl_symbol(symbol: Symbol, space: str = " ") -> str:
+    """
+    A parsed ``Symbol`` as paragraph markup: Greek letters, combining accents,
+    primes, ``<sup>`` and ``<sub>`` (sibling subscripts separated by commas).
+    """
+    markup = space.join(
+        "".join(GREEK_UNICODE[text] if is_greek else escape(text) for is_greek, text in pieces)
+        for pieces in symbol.words
+    )
+    markup += "".join(ACCENT_MARKS[accent] for accent in symbol.accents)
+    markup += PRIME_MARK * symbol.primes
+    if symbol.superscripts:
+        markup += f"<sup>{','.join(rl_symbol(sup, space) for sup in symbol.superscripts)}</sup>"
+    if symbol.subscripts:
+        markup += f"<sub>{','.join(rl_symbol(sub, space) for sub in symbol.subscripts)}</sub>"
+    return markup
 
 
-def swap_accents(renderer, node: Name, base_context: BRC) -> Name:
+def swap_identifier(renderer, node: Name, base_context: BRC) -> Name:
+    """
+    Typeset an identifier from its parsed ``Symbol`` (handcalcs' shared
+    identifier rules): ``sigma_max`` -> ``σ<sub>max</sub>``, ``N_pl_Rd`` ->
+    ``N<sub>pl,Rd</sub>`` (nested with the ``subscripts`` option), ``DeltaH``
+    -> ``ΔH``, ``x_hat`` -> x̂, ``M_star`` -> ``M<sup>*</sup>``; ``__`` is a
+    space and ``___`` an underscore. An identifier in the ``symbols`` option is
+    typeset from its spec. Text that is not an identifier (markup from another
+    rule) is left alone.
+    """
+    options = identifier_options(renderer, base_context)
     identifier = node.identifier
-    for suffix, markup in ACCENTS.items():
-        identifier = identifier.replace(suffix, markup)
-    node.identifier = identifier
+    if identifier in options.symbols or is_identifier(identifier):
+        node.identifier = rl_symbol(parse_identifier(identifier, options), base_context.current.space)
     return node
 
 
-def swap_subscripts(renderer, node: Name, base_context: BRC) -> Name:
+def render_subscript(renderer, node: Subscript, base_context: BRC) -> str:
     """
-    A single underscore starts a (nested) subscript, a double underscore is a
-    space and a triple underscore is a literal underscore: ``e_f_g`` ->
-    ``e<sub>f<sub>g</sub></sub>``, ``a__b`` -> ``a b``, ``c___d`` -> ``c_d``.
+    An index or key lookup. A name indexed by integers, short strings or names
+    shows each index as a subscript (``xs[0]`` -> ``xs<sub>0</sub>``); any
+    other lookup is shown in brackets. The numeric column shows the element.
     """
-    space = base_context.current.space
-    identifier = node.identifier.replace("___", "\0").replace("__", "\1")
-    depth = identifier.count("_")
-    identifier = identifier.replace("_", "<sub>") + "</sub>" * depth
-    node.identifier = identifier.replace("\1", space).replace("\0", "_")
-    return node
+    value = subscript_value(renderer, node, base_context)
+    if value is not None:
+        return value
+    if node.labels is None:
+        return render_bracketed_subscript(renderer, node, base_context)
+    options = identifier_options(renderer, base_context)
+    symbol = indexed_symbol(node.container.identifier, node.labels, options)
+    return rl_symbol(symbol, base_context.current.space)
 
 
 ## OPERATORS
@@ -178,9 +200,8 @@ def swap_sqrt(renderer, node: FunctionCall, base_context: BRC) -> FunctionCall:
 
 
 def register_symbol_rules(cls) -> None:
-    cls.register("name:sym")(swap_greek)
-    cls.register("name:sym")(swap_accents)
-    cls.register("name:sym")(swap_subscripts)
+    cls.register("name:sym")(swap_identifier)
+    cls.register("subscript")(render_subscript)
     cls.register("mult_op:pre")(swap_mult_symbol)
     cls.register("pow_op")(render_pow_op)
     for op in ("gt_op", "lt_op", "gte_op", "lte_op", "eq_op", "neq_op"):

@@ -162,10 +162,14 @@ def test_renderer_builds_on_base_renderer_only():
     assert ReportLabRenderer.__bases__ == (BaseRenderer,)
 
 
+SHARED_RENDERER_MODULES = {"handcalcs.renderers.base", "handcalcs.renderers.identifiers"}
+
+
 def test_no_module_imports_another_handcalcs_renderer():
-    # Only the BaseRenderer API (handcalcs.renderers.base) and the parser nodes
-    # may be imported, so the HTML, LaTeX, Markdown and plain-text renderers can
-    # change freely.
+    # Only the BaseRenderer API (handcalcs.renderers.base), the shared identifier
+    # parser (handcalcs.renderers.identifiers) and the parser nodes may be
+    # imported, so the HTML, LaTeX, Markdown and plain-text renderers can change
+    # freely.
     import ast
     import ym_handcalcs
 
@@ -180,7 +184,7 @@ def test_no_module_imports_another_handcalcs_renderer():
                 continue
             for module in modules:
                 if module.startswith("handcalcs.renderers"):
-                    assert module == "handcalcs.renderers.base", f"{path.name} imports {module}"
+                    assert module in SHARED_RENDERER_MODULES, f"{path.name} imports {module}"
 
 
 def test_missing_fonts_raise_a_helpful_error():
@@ -661,3 +665,30 @@ def test_row_split_keeps_the_rule_on_both_halves():
     for half in halves:
         half.wrap(252, 1000)
         assert any(cmd == "LINEBEFORE" for cmd, *_ in half._linecmds)
+
+
+# -- identifiers and lookups (handcalcs' shared identifier rules) ----------------
+
+def test_identifier_accents_primes_and_star():
+    text = dump(render("x_hat = 1\ny_dot = 2\nz_ddot = 3\nM_star = 4\nf_prime = 5\nq_bar = 6\n")["story"])
+    for symbol in ("x̂ = 1", "ẏ = 2", "z̈ = 3", "M<sup>*</sup> = 4", "f′ = 5", "q̅ = 6"):
+        assert f"CalcLine: {symbol}\n" in text
+
+
+def test_identifier_subscripts_are_siblings_and_greek_prefixes_are_letters():
+    text = dump(render("N_pl_Rd = 1\nDeltaH = 2\na__b = 3\nc___d = 4\n")["story"])
+    assert "CalcLine: N<sub>pl,Rd</sub> = 1\n" in text
+    assert "CalcLine: ΔH = 2\n" in text
+    assert "CalcLine: a b = 3\n" in text
+    assert "CalcLine: c_d = 4\n" in text
+
+
+def test_index_and_key_lookups_are_subscripts():
+    source = "xs = [10, 20]\nloads = {'dead': 5}\nc = xs[0] + loads['dead']\n"
+    text = dump(render(source)["story"])
+    assert "CalcLine: c = xs<sub>0</sub> + loads<sub>dead</sub> = 10 + 5 = " in text
+
+
+def test_a_computed_index_is_shown_in_brackets():
+    text = dump(render("xs = [10, 20]\ni = 0\nc = xs[i + 1]\n")["story"])
+    assert "xs[i + 1]" in text
