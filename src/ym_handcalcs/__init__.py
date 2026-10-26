@@ -14,3 +14,4 @@ from .fonts import Fonts, FontFamily, ensure_dejavu_registered
 from .styles import DEFAULT_THEME, Palette, build_stylesheet
 from .renderer import ReportLabRenderer
 from .pdf import build_pdf
+from .block import BLOCK_CODE, convert_hc_block
