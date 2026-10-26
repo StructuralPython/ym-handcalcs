@@ -12,14 +12,15 @@ depth is known.
 from __future__ import annotations
 
 import itertools
+import pathlib
 import re
 from typing import Optional
 from xml.sax.saxutils import escape
 
 from reportlab.lib.styles import StyleSheet1
-from reportlab.platypus import Flowable, HRFlowable, KeepTogether, Paragraph, Spacer
+from reportlab.platypus import Flowable, HRFlowable, KeepTogether, PageBreak, Paragraph, Spacer
 
-from handcalcs.renderers.base import BaseRenderContext, BaseRenderer, RenderContext, render_condition
+from handcalcs.renderers.base import PAGE_BREAK, BaseRenderContext, BaseRenderer, RenderContext, render_condition
 
 from .flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid
 from .fonts import Fonts, missing_fonts, register_families
@@ -66,6 +67,11 @@ def code_spans(text: str, font: str) -> str:
 
 class ReportLabRenderer(BaseRenderer):
     name = "reportlab"
+    # The pass/fail mark that ``# hc: --check`` appends to a comparison's result.
+    CHECK_MARKS = (
+        ' <font color="#1A7F37"><b>\u2713</b></font>',
+        ' <font color="#CF222E"><b>\u2717</b></font>',
+    )
 
     def __init__(
         self,
@@ -108,6 +114,12 @@ class ReportLabRenderer(BaseRenderer):
     def create_context(self, **config_kwargs) -> BaseRenderContext:
         return BaseRenderContext(RenderContext(**config_kwargs), RenderContext.sparse())
 
+    def to_file(self, rendered: dict, path) -> pathlib.Path:
+        """Write a completed render to a PDF at ``path`` (see ``build_pdf``) and return the path."""
+        from .pdf import build_pdf
+
+        return build_pdf(rendered, path, palette=self.palette)
+
     # -- Join: master list -> flowables -------------------------------------
 
     def join_item(self, item, depth: int, base_context: BaseRenderContext) -> list[Flowable]:
@@ -127,6 +139,8 @@ class ReportLabRenderer(BaseRenderer):
         if not item:
             return []
         if isinstance(item, str):
+            if item == PAGE_BREAK:  # ``# hc: --pagebreak``
+                return [_Placed(PageBreak())]
             # A one-shot line-break directive is a bare newline.
             if not item.strip("\n"):
                 return [Spacer(1, self.metrics.base_size * 0.6)]

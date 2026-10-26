@@ -28,7 +28,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import StyleSheet1
 from reportlab.platypus import (
-    Flowable, HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table,
+    Flowable, HRFlowable, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table,
 )
 
 from handcalcs import HandCalcs
@@ -705,3 +705,35 @@ def test_strings_are_shown_in_curly_quotes_and_escaped():
     text = dump(render("s = 'a<b'\nt = s\n")["story"])
     assert "CalcLine: s = “a&lt;b”\n" in text
     assert "CalcLine: t = s = " in text and "“a&lt;b”" in text.split("CalcLine: t = s = ")[1]
+
+
+# -- comment commands and files ------------------------------------------------
+
+def pdf_pages(path) -> list[str]:
+    from pypdf import PdfReader
+
+    return [page.extract_text() for page in PdfReader(path).pages]
+
+
+@pytest.mark.parametrize("source", [
+    "a = 1\n# hc: --pagebreak\nb = 2\n",
+    "a = 1\nb = 2\n# hc: --pagebreak\nc = 3\nd = 4\n",
+    "a = 1\nif a > 0:\n    b = 2\n    # hc: --pagebreak\n    c = 3\n",
+])
+def test_pagebreak_starts_a_new_page(source, tmp_path):
+    result = render(source)
+    assert any(isinstance(f, PageBreak) for _, f in leaves(result["story"]))
+    pages = pdf_pages(build_pdf(result, tmp_path / "out.pdf"))
+    assert len(pages) == 2
+
+
+def test_check_marks_pass_and_fail():
+    text = dump(render("a = 2\nb = 3\nok = a < b  # hc: --check\nbad = a > b  # hc: --check\n")["story"])
+    assert '<font color="#1A7F37"><b>✓</b></font>' in text.split("ok = ")[1].split("\n")[0]
+    assert '<font color="#CF222E"><b>✗</b></font>' in text.split("bad = ")[1].split("\n")[0]
+
+
+def test_destination_writes_a_pdf(tmp_path):
+    path = HandCalcs(renderer=ReportLabRenderer())("a = 2\nb = a * 3\n", destination=tmp_path / "calcs.pdf")
+    assert path == tmp_path / "calcs.pdf"
+    assert "b = a · 3 = 2 · 3 = 6" in " ".join(pdf_pages(path)[0].split())
