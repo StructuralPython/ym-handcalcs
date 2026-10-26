@@ -319,15 +319,25 @@ class ReportLabRenderer(BaseRenderer):
                 space_before=m.gap * 2, space_after=m.gap,
             )
         # A ``# hc: -m`` calc: ``[target, '=', sym]``, ``['', '=', num]``, ... The
-        # last value may end with the inline comment.
+        # last value may end with the inline comment. A row with no '=' continues
+        # the value above it (a line continuation in the source): it joins that
+        # value on a new, indented line.
         rows = [[str(ident), str(eq), str(val)] for ident, eq, val in grid.rows]
-        columns = [rows[0][0]] + [row[2] for row in rows]
+        columns = [rows[0][0]]
+        for _ident, eq, val in rows:
+            if eq or len(columns) == 1:
+                columns.append(val)
+            else:
+                columns[-1] += f"<br/>{self.CONTINUATION_INDENT}{val}"
         value, sep, comment = columns[-1].rpartition(f" {self.comment_open}")
         comment_markup = None
         if sep:
             columns[-1] = value
             comment_markup = f"{self.comment_open}{comment}"
         return self.calc_line(columns, comment_markup, forced_grid=True)
+
+    # Leads each continued line of a value (see ``grid_flowable``).
+    CONTINUATION_INDENT = "\u2003\u2003"
 
     @property
     def comment_open(self) -> str:

@@ -737,3 +737,18 @@ def test_destination_writes_a_pdf(tmp_path):
     path = HandCalcs(renderer=ReportLabRenderer())("a = 2\nb = a * 3\n", destination=tmp_path / "calcs.pdf")
     assert path == tmp_path / "calcs.pdf"
     assert "b = a · 3 = 2 · 3 = 6" in " ".join(pdf_pages(path)[0].split())
+
+
+@pytest.mark.parametrize("source, values", [
+    ("a = 2\nb = 3\nc = a * b + \\\n    b\n", ["a · b +<br/>  b", "2 · 3 +<br/>  3", "9"]),
+    ("a = 2\nb = 3\nc = a * b \\\n    - b  # net\n", ["a · b<br/>  - b", "2 · 3<br/>  - 3", "3"]),
+])
+def test_line_continuations_continue_the_value_on_an_indented_line(source, values):
+    lines = [f for _, f in leaves(render(source)["story"]) if isinstance(f, CalcLine)]
+    assert lines[-1].columns == ["c", *values]
+    assert lines[-1].forced_grid
+
+
+def test_a_continued_calc_keeps_its_comment():
+    lines = [f for _, f in leaves(render("a = 2\nb = 3\nc = a * b \\\n    - b  # net\n")["story"]) if isinstance(f, CalcLine)]
+    assert "(net)" in lines[-1].comment
