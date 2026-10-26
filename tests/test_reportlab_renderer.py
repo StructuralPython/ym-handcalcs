@@ -692,3 +692,16 @@ def test_index_and_key_lookups_are_subscripts():
 def test_a_computed_index_is_shown_in_brackets():
     text = dump(render("xs = [10, 20]\ni = 0\nc = xs[i + 1]\n")["story"])
     assert "xs[i + 1]" in text
+
+
+def test_cube_roots_and_factorials():
+    text = dump(render("import math\na = 27\nb = math.cbrt(a)\nc = math.factorial(4)\nn = 3\nd = math.factorial(n + 1)\n")["story"])
+    assert "CalcLine: b = ∛(a) = ∛(27) = " in text
+    assert "CalcLine: c = 4! = " in text
+    assert "CalcLine: d = (n + 1)! = (3 + 1)! = " in text
+
+
+def test_strings_are_shown_in_curly_quotes_and_escaped():
+    text = dump(render("s = 'a<b'\nt = s\n")["story"])
+    assert "CalcLine: s = “a&lt;b”\n" in text
+    assert "CalcLine: t = s = " in text and "“a&lt;b”" in text.split("CalcLine: t = s = ")[1]

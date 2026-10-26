@@ -57,18 +57,18 @@ Paragraph[hcComment]: This section demonstrates the <font name="DejaVuSansMono">
 CalcLine: temp = 75 | <font color="#637778"><i>(Measured temperature, deg C)</i></font>
 CalcLine: temp<sub>min</sub> = 40 | <font color="#637778"><i>(Minimum operating temperature, deg C)</i></font>
 CalcLine: temp<sub>max</sub> = 120 | <font color="#637778"><i>(Maximum operating temperature, deg C)</i></font>
-CalcLine: materials = ["steel", "concrete", "timber"]
-CalcLine: material = "steel"
+CalcLine: materials = [“steel”, “concrete”, “timber”]
+CalcLine: material = “steel”
 CalcLine: override = None
 CalcLine: in<sub>range</sub> = temp<sub>min</sub> &lt; temp and temp &lt; temp<sub>max</sub> = 40 &lt; 75 and 75 &lt; 120 = True | <font color="#637778"><i>(Within the operating range)</i></font>
 CalcLine: is<sub>extreme</sub> = temp &lt; temp<sub>min</sub> or temp &gt; temp<sub>max</sub> = 75 &lt; 40 or 75 &gt; 120 = False | <font color="#637778"><i>(Outside the operating range)</i></font>
 CalcLine: not<sub>frozen</sub> = not (temp &lt; 0) = not (75 &lt; 0) = True | <font color="#637778"><i>(Above freezing)</i></font>
-CalcLine: material<sub>ok</sub> = material in materials = "steel" in ["steel", "concrete", "timber"] = True | <font color="#637778"><i>(Material is recognised)</i></font>
-CalcLine: material<sub>missing</sub> = material not in materials = "steel" not in ["steel", "concrete", "timber"] = False
+CalcLine: material<sub>ok</sub> = material in materials = “steel” in [“steel”, “concrete”, “timber”] = True | <font color="#637778"><i>(Material is recognised)</i></font>
+CalcLine: material<sub>missing</sub> = material not in materials = “steel” not in [“steel”, “concrete”, “timber”] = False
 CalcLine: no<sub>override</sub> = override is None = None is None = True | <font color="#637778"><i>(No manual override was set)</i></font>
 CalcLine: has<sub>override</sub> = override is not None = None is not None = False
 CalcLine: combined = in<sub>range</sub> and (is<sub>extreme</sub> or not<sub>frozen</sub>) = True and (False or True) = True | <font color="#637778"><i>(Precedence: <font name="DejaVuSansMono-Oblique">or</font> is parenthesized)</i></font>
-Header: <font color="#0B5F66">▸</font> <font color="#0B5F66"><b>Since</b></font> (temp<sub>min</sub> &lt; temp &lt; temp<sub>max</sub> and material in materials) → (40 &lt; 75 &lt; 120 and "steel" in ["steel", "concrete", "timber"]) <font color="#0B5F66"><b>is True:</b></font>
+Header: <font color="#0B5F66">▸</font> <font color="#0B5F66"><b>Since</b></font> (temp<sub>min</sub> &lt; temp &lt; temp<sub>max</sub> and material in materials) → (40 &lt; 75 &lt; 120 and “steel” in [“steel”, “concrete”, “timber”]) <font color="#0B5F66"><b>is True:</b></font>
   CalcLine: section<sub>check</sub> = 1
-CalcLine: a<sub>dictionary</sub> = {"cat": 1, "hat": 2, "bat": 3.1416}
-CalcLine: a<sub>tuple</sub> = ("string", 1, 42, 3+4j)
+CalcLine: a<sub>dictionary</sub> = {“cat”: 1, “hat”: 2, “bat”: 3.1416}
+CalcLine: a<sub>tuple</sub> = (“string”, 1, 42, 3+4j)

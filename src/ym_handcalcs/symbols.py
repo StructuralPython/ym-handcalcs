@@ -18,12 +18,16 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape
 
-from handcalcs.parsing.nodes import Name, Subscript
+from handcalcs.parsing.nodes import Constant, Name, Subscript
 from handcalcs.parsing.inline_nodes import FunctionCall
 from handcalcs.parsing.operator_nodes import HcBinOp, HcCompOp, PowOp
 from handcalcs.renderers.base import (
     OP_PRECEDENCE,
+    ROOT_SYMBOLS,
     BaseRenderContext,
+    math_call_name,
+    postfix_factorial,
+    render_constant,
     render_subscript as render_bracketed_subscript,
     subscript_value,
 )
@@ -165,8 +169,7 @@ def math_module(alias: str, base_context: BRC):
 
 def drop_math_namespace(renderer, node: FunctionCall, base_context: BRC) -> FunctionCall:
     """
-    ``math.sin(x)`` -> ``sin(x)``. Registered before ``swap_sqrt`` so that rule
-    still sees the ``sqrt`` name. Clearing the namespace is idempotent, and an
+    ``math.sin(x)`` -> ``sin(x)``. Registered before ``swap_roots``. Clearing the namespace is idempotent, and an
     empty namespace renders as nothing.
     """
     namespace = getattr(node.namespace, "identifier", None)
@@ -189,14 +192,31 @@ def swap_math_constant(renderer, node, base_context: BRC):
 
 ## FUNCTION CALLS
 
-def swap_sqrt(renderer, node: FunctionCall, base_context: BRC) -> FunctionCall:
-    """Arguments sit in round brackets; ``sqrt(x)`` shows as ``√(x)``."""
+def swap_roots(renderer, node: FunctionCall, base_context: BRC) -> FunctionCall:
+    """
+    Arguments sit in round brackets; ``sqrt(x)`` shows as ``√(x)``,
+    ``cbrt(x)`` as ``∛(x)`` and ``factorial(n)`` as ``n!`` (``(n + 1)!``).
+    """
+    name = math_call_name(node)
+    if name == "":  # already set in its own notation (a factorial)
+        return node
     node.pre = "("
     node.post = ")"
-    if node.function_name.identifier == "sqrt":
-        node.function_name.identifier = "√"
-        node.function_name.value = "√"
+    if name == "factorial":
+        return postfix_factorial(node, "(", ")")
+    if name in ROOT_SYMBOLS:
+        node.function_name.identifier = ROOT_SYMBOLS[name]
+        node.function_name.value = ROOT_SYMBOLS[name]
     return node
+
+
+## VALUES
+
+def quote_string(renderer, node: Constant, base_context: BRC):
+    """A string value is shown in curly quotes, “W310x39”; ``escape_value`` escapes it."""
+    if isinstance(node.value, str) and (node.calculated or node.source_text):
+        return f"“{node.value}”"
+    return render_constant(renderer, node, base_context)
 
 
 def register_symbol_rules(cls) -> None:
@@ -208,5 +228,6 @@ def register_symbol_rules(cls) -> None:
         cls.register(f"{op}:pre")(swap_comparison)
         cls.register(f"{op}:post")(space_comparison)
     cls.register("function_call:pre")(drop_math_namespace)
-    cls.register("function_call:pre")(swap_sqrt)
+    cls.register("function_call:pre")(swap_roots)
+    cls.register("constant")(quote_string)
     cls.register("attribute:sym")(swap_math_constant)
