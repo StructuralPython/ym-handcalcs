@@ -68,6 +68,9 @@ ensure_dejavu_registered()  # YMPrint registers the DejaVu fonts itself
 result = HandCalcs(renderer=ReportLabRenderer(theme_color="#7A1F1F"))("a = 2\nb = a * 3\n")
 result["story"]  # list of flowables
 build_pdf(result, "calcs.pdf", title="Calcs")
+
+# or straight to a PDF
+HandCalcs(renderer=ReportLabRenderer())("a = 2\nb = a * 3\n", destination="calcs.pdf")
 ```
 
 ## Development
