@@ -439,11 +439,13 @@ def test_short_line_stays_on_one_line():
     assert line.layout == "line"
 
 
-def test_comment_moves_under_a_line_that_fits_without_it():
+def test_comment_stays_on_the_last_row_of_a_line_too_long_for_it():
     comment = '<font color="#6B7785"><i>(a fairly long explanatory comment)</i></font>'
     line = calc_line(["x", "a + b", "1 + 2", "3"], comment)
     line.wrap(130, 1000)
-    assert line.layout == "line+comment"
+    assert line.layout == "grid"
+    last_value = line._table._cellvalues[-1][2]
+    assert last_value[0].text.endswith(comment)
 
 
 def test_forced_grid_skips_the_one_line_layouts():

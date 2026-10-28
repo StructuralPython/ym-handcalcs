@@ -312,19 +312,19 @@ class CalcLine(Flowable):
     other lines of its run, so their ``=`` signs line up.
 
     ``columns`` are ``[target, sym, num, result]`` (or fewer) as paragraph
-    markup; ``comment`` is the styled inline comment or None. The layouts are
-    tried in order and the first that fits is kept:
+    markup; ``comment`` is the styled inline comment or None. It always ends
+    the line's last row, so it never reads as part of the next line. The
+    layouts are tried in order and the first that fits is kept:
 
     1. ``line``: one row, ``target = sym = num = result`` (skipped when
        ``forced_grid``, i.e. ``# hc: -m``);
-    2. ``line+comment``: the same, with the comment on a row underneath;
-    3. ``grid``: one row per value, each starting with ``=``, no wrapping;
-    4. ``grid:breakN``: wrap value cells at break points up to rank N;
+    2. ``grid``: one row per value, each starting with ``=``, no wrapping;
+    3. ``grid:breakN``: wrap value cells at break points up to rank N;
        then ``stack`` / ``stack:breakN``: the same with the target on a row of
        its own (for a target too wide for the target column);
-    5. ``grid:elided``: long collections shortened around an ellipsis;
-    6. ``shrink``: the above at ``min_scale`` font size;
-    7. ``overflow``: the last attempt, wider than the frame.
+    4. ``grid:elided``: long collections shortened around an ellipsis;
+    5. ``shrink``: the above at ``min_scale`` font size;
+    6. ``overflow``: the last attempt, wider than the frame.
 
     The numeric substitution row is never dropped here; that is the author's
     call, per line, with ``# hc: mode="no_num"``.
@@ -381,32 +381,28 @@ class CalcLine(Flowable):
               kind: str, scale: float = 1.0):
         """
         The cells of one layout and whether it fits. ``kind`` is ``line``,
-        ``line+comment``, ``grid`` or ``stack`` (the target on a row of its
-        own). Returns ``(cells, commands, fits)``; ``commands`` are extra table
+        ``grid`` or ``stack`` (the target on a row of its own). Returns ``(cells, commands, fits)``; ``commands`` are extra table
         commands with row numbers relative to this line.
         """
         right = _scaled(self.styles["right"], scale)
         center = _scaled(self.styles["center"], scale)
         value_style = _scaled(self.styles["value"], scale)
         values = self._values(columns, transform)
-        comment_row = kind == "line+comment" and self.comment
         if len(values) == 1:
             rows = [["", "", values[0]]]
-        elif kind in ("line", "line+comment"):
+        elif kind == "line":
             rows = [[values[0], "=", " = ".join(values[1:])]]
         elif kind == "stack":
             rows = [[values[0], "", ""]] + [["", "=", value] for value in values[1:]]
         else:
             rows = [[values[0], "=", values[1]]] + [["", "=", value] for value in values[2:]]
-        if self.comment and not comment_row:
+        if self.comment:
             rows[-1][2] = f"{rows[-1][2]} {self.comment}"
         cells = [
             [Paragraph(i, right) if i else "", Paragraph(e, center) if e else "",
              value_cell(v, value_style, self.matrices)]
             for i, e, v in rows
         ]
-        if comment_row:
-            cells.append(["", "", value_cell(self.comment, value_style, self.matrices)])
         commands = []
         value_rows = cells
         eq_width = self.eq_width()
@@ -425,9 +421,7 @@ class CalcLine(Flowable):
         for idx, row in enumerate(cells):
             if isinstance(row[2], MathRow):
                 commands.append(("VALIGN", (0, idx), (-1, idx), "MIDDLE"))
-        if comment_row:
-            value_rows = value_rows[:-1]
-        if kind in ("line", "line+comment"):
+        if kind == "line":
             # A one-row layout must fit without wrapping at all.
             fits = target_fits and inner > 0 and natural_width(value_rows[0][2]) <= inner + 0.01
         else:
@@ -439,10 +433,6 @@ class CalcLine(Flowable):
 
         if not self.forced_grid:
             yield "line", lambda s: self._rows(avail_width, id_width, self.columns, unbreakable, "line", s)
-            if self.comment:
-                yield "line+comment", lambda s: self._rows(
-                    avail_width, id_width, self.columns, unbreakable, "line+comment", s
-                )
         column_sets = [("", self.columns)]
         elided = [elide_collections(col) for col in self.columns]
         if elided != self.columns:
