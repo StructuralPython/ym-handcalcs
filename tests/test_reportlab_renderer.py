@@ -741,6 +741,73 @@ def test_destination_writes_a_pdf(tmp_path):
     assert "b = a · 3 = 2 · 3 = 6" in " ".join(pdf_pages(path)[0].split())
 
 
+def test_decorator_destination_writes_a_pdf(tmp_path):
+    from handcalcs import handcalc
+
+    @handcalc(renderer=ReportLabRenderer(), destination=tmp_path / "beam.pdf")
+    def beam(w, L):
+        M = w * L**2 / 8
+        return M
+
+    assert beam(5, 6) == (22.5, tmp_path / "beam.pdf")
+    assert "M = w · L2 / 8" in " ".join(pdf_pages(tmp_path / "beam.pdf")[0].split())
+
+
+# -- showing and hiding (handcalcs' render_node gate) ------------------------------
+
+def shown(source: str) -> list[str]:
+    """The target, heading or header of every leaf the source shows."""
+    texts = []
+    for _, flowable in leaves(render(source)["story"]):
+        if isinstance(flowable, CalcLine):
+            texts.append(flowable.columns[0])
+        elif isinstance(flowable, ParamGrid):
+            texts.extend(cell[0] for cell in flowable.cells)
+        elif isinstance(flowable, (Paragraph, BreakingParagraph)):
+            texts.append(describe(0, flowable))
+    return texts
+
+
+CONDITIONAL = (
+    "w = {w}\nM_f = w * 6**2 / 8\n# hc: -s M_f > 0\n## Flexure\nZ_req = M_f / 350\n"
+    "# hc: -s\nR = w * 3\n"
+)
+
+
+def test_a_false_show_condition_hides_the_section():
+    assert shown(CONDITIONAL.format(w=0)) == ["w", "M<sub>f</sub>", "R"]
+
+
+def test_a_true_show_condition_shows_the_section():
+    texts = shown(CONDITIONAL.format(w=2))
+    assert texts[:2] == ["w", "M<sub>f</sub>"]
+    assert any("Flexure" in text for text in texts)
+    assert texts[-2:] == ["Z<sub>req</sub>", "R"]
+
+
+def test_an_inline_ignore_condition_uses_the_line_value():
+    assert shown("a = 2\nb = a - 2  # hc: -i b == 0\nc = a + 1  # hc: -i c == 0\n") == ["a", "c"]
+
+
+def test_a_hidden_section_hides_headings_comments_and_block_headers():
+    source = (
+        "# hc: -i\n## Setup\n# A comment\nx = 1\nif x > 0:\n    y = 2\n"
+        "z = 3  # hc: -s\n# hc: -s\nq = 4\n"
+    )
+    assert shown(source) == ["z", "q"]
+
+
+def test_hidden_by_default_shows_only_marked_lines():
+    from handcalcs import get_option, set_option
+
+    before = get_option("hidden_by_default")
+    set_option("hidden_by_default", True)
+    try:
+        assert shown("b = 3\nh = 6\nA = b * h  # hc: -s\n") == ["A"]
+    finally:
+        set_option("hidden_by_default", before)
+
+
 @pytest.mark.parametrize("source, values", [
     ("a = 2\nb = 3\nc = a * b + \\\n    b\n", ["a · b +<br/>  b", "2 · 3 +<br/>  3", "9"]),
     ("a = 2\nb = 3\nc = a * b \\\n    - b  # net\n", ["a · b<br/>  - b", "2 · 3<br/>  - 3", "3"]),

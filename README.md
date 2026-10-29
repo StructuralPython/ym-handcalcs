@@ -19,7 +19,7 @@ ym-handcalcs needs handcalcs 2.0, which is currently a pre-release. pip installs
 automatically; uv only installs a pre-release you name, so add it with `--with`:
 
 ```bash
-uv tool install "ymprint[hc]" --with "handcalcs>=2.0.0rc1"
+uv tool install "ymprint[hc]" --with "handcalcs>=2.0.0rc2"
 ```
 
 YMPrint registers the `_hc` block automatically when ym-handcalcs is installed.

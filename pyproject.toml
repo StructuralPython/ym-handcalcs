@@ -9,7 +9,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
-    "handcalcs>=2.0.0rc1",
+    "handcalcs>=2.0.0rc2",
     "reportlab>=4.5.1",
 ]
 
