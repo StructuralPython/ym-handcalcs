@@ -9,7 +9,7 @@ line                     L
 line                     E
 grid                     I<sub>y</sub>
 line                     G
-grid                     J
+line                     J
 line                     C<sub>w</sub>
 shrink:grid:break5       M<sub>u</sub>
 shrink:grid:break5       M<sub>u</sub>
