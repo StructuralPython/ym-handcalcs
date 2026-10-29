@@ -8,7 +8,7 @@ ym_handcalcs: renders handcalcs to ReportLab, and the `_hc` block for ymprint.
     result["stylesheet"]  # reportlab.lib.styles.StyleSheet1
     result["story"]       # list of flowables
 """
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 from .fonts import Fonts, FontFamily, ensure_dejavu_registered
 from .styles import DEFAULT_THEME, Palette, build_stylesheet
