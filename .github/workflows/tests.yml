@@ -1,0 +1,54 @@
+# Runs the tests on every push and pull request, against the locked dependencies.
+# The 'upstream' job runs them daily against the newest handcalcs, both the latest
+# pre-release on PyPI and handcalcs' main branch, so a new handcalcs feature that this
+# renderer does not handle (handcalcs.testing's feature suite) fails here first.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+    - name: Install dependencies
+      run: uv sync --locked
+    - name: Run tests
+      run: uv run --no-sync pytest -q
+
+  upstream:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        handcalcs:
+        - name: pre-release
+          spec: handcalcs
+        - name: main
+          spec: handcalcs @ git+https://github.com/connorferster/handcalcs@main
+    name: upstream (handcalcs ${{ matrix.handcalcs.name }})
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+    - name: Install dependencies
+      run: uv sync --locked
+    - name: Install the newest handcalcs
+      run: |
+        uv pip install --upgrade --prerelease allow "${{ matrix.handcalcs.spec }}"
+        uv run --no-sync python -c "import importlib.metadata as m; print('handcalcs', m.version('handcalcs'))"
+    - name: Run tests
+      run: uv run --no-sync pytest -q
