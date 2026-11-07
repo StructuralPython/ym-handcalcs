@@ -43,14 +43,35 @@ class Fonts:
         "DejaVuSansMono", "DejaVuSansMono-Bold", "DejaVuSansMono-Oblique", "DejaVuSansMono-Bold"
     )
 
+    # Headings. None uses ``sans`` (bold), as before.
+    heading: Optional[FontFamily] = None
+
     @property
-    def families(self) -> tuple[FontFamily, FontFamily, FontFamily]:
-        return (self.sans, self.serif, self.mono)
+    def heading_family(self) -> FontFamily:
+        return self.heading if self.heading is not None else self.sans
+
+    @property
+    def families(self) -> tuple[FontFamily, ...]:
+        families = (self.sans, self.serif, self.mono)
+        return families if self.heading is None else (*families, self.heading)
+
+
+def family_from_name(name: str) -> Optional[FontFamily]:
+    """
+    The faces of the font family registered as ``name`` (e.g. 'NotoSerif' or
+    'Helvetica'), or None if ReportLab has no bold/italic mapping for it.
+    """
+    try:
+        faces = [tt2ps(name, bold, italic) for bold, italic in ((0, 0), (1, 0), (0, 1), (1, 1))]
+    except (ValueError, KeyError):
+        return None
+    return FontFamily(*faces)
 
 
 def missing_fonts(fonts: Fonts) -> list[str]:
     """Face names in ``fonts`` that are not registered with ReportLab."""
-    registered = set(pdfmetrics.getRegisteredFontNames())
+    # The 14 standard PDF fonts (Helvetica, Times-Roman, ...) need no registration.
+    registered = set(pdfmetrics.getRegisteredFontNames()) | set(pdfmetrics.standardFonts)
     return [face for family in fonts.families for face in family.faces if face not in registered]
 
 

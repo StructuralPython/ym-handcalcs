@@ -17,7 +17,7 @@ import re
 from typing import Optional
 from xml.sax.saxutils import escape
 
-from reportlab.lib.styles import StyleSheet1
+from reportlab.lib.styles import ParagraphStyle, StyleSheet1
 from reportlab.platypus import Flowable, HRFlowable, KeepTogether, PageBreak, Paragraph, Spacer
 
 from handcalcs.renderers.base import (
@@ -42,6 +42,8 @@ from handcalcs.parsing.line_nodes import CommentLine, ExprLine, Heading, Import
 from handcalcs.parsing.block_nodes import CommentsBlock, ElseBlock, ForBlock, IfBlock
 
 BRC = BaseRenderContext
+
+HEADING_MODES = ("calc", "document", "flat")
 
 class _Placed:
     """A flowable that a nested ``join_items`` call has already placed at its depth."""
@@ -89,12 +91,30 @@ class ReportLabRenderer(BaseRenderer):
         fonts: Fonts = Fonts(),
         base_size: float = 9.5,
         theme_color=None,
+        headings: str = "calc",
+        heading_styles: Optional[dict[int, ParagraphStyle]] = None,
+        outline_level: Optional[int] = None,
     ) -> None:
         """
         ``theme_color`` (a dark ``'#RRGGBB'``) derives the whole palette with
         ``Palette.from_theme``; pass ``palette`` instead for full control.
+
+        ``headings`` sets how heading comments (``## ...``) render:
+
+        - ``"calc"``: the renderer's own heading styles (``hcH1``..``hcH3``).
+        - ``"document"``: ``heading_styles[n]`` for calc heading level n (1..3),
+          supplied by the host document so calc headings continue its headings.
+          Without ``heading_styles`` this is the same as ``"calc"``.
+        - ``"flat"``: bold labels (``hcLabel``) with no heading level and no
+          bookmark.
+
+        ``outline_level`` is the host outline level of a level-1 calc heading. When
+        given, each heading also carries ``ym_outline = (title, level)`` for the
+        host's bookmarks (ymprint).
         """
         super().__init__()
+        if headings not in HEADING_MODES:
+            raise ValueError(f"headings must be one of {', '.join(HEADING_MODES)}, got {headings!r}")
         if palette is not None and theme_color is not None:
             raise ValueError("pass either palette or theme_color, not both")
         if palette is None:
@@ -115,6 +135,9 @@ class ReportLabRenderer(BaseRenderer):
         self.stylesheet = stylesheet if stylesheet is not None else build_stylesheet(
             palette, fonts, base_size
         )
+        self.headings = headings
+        self.heading_styles = heading_styles or {}
+        self.outline_level = outline_level
 
     # -- Completion ---------------------------------------------------------
 
@@ -292,11 +315,22 @@ class ReportLabRenderer(BaseRenderer):
         """
         A heading paragraph, followed by an accent rule for levels 1 and 2. The
         paragraph carries ``hc_outline = (key, text, level)`` so a doc template
-        can add a PDF bookmark for it (``build_pdf`` does).
+        can add a PDF bookmark for it (``build_pdf`` does), and, with an
+        ``outline_level``, ``ym_outline = (text, level)`` for ymprint's bookmarks.
+        With ``headings="flat"`` it is a bold label instead, with no bookmark.
         """
         level = min(max(item.level, 1), 3)
-        heading = Paragraph(str(item), self.style(f"hcH{level}"))
-        heading.hc_outline = (f"hc-h-{next(_ANCHORS)}", plain_text(str(item)), level - 1)
+        if self.headings == "flat":
+            return [Paragraph(str(item), self.style("hcLabel"))]
+        style = self.heading_styles.get(level) if self.headings == "document" else None
+        heading = Paragraph(str(item), style if style is not None else self.style(f"hcH{level}"))
+        if style is not None:
+            # A document style may not keep the heading with what follows it.
+            heading.keepWithNext = 1
+        title = plain_text(str(item))
+        heading.hc_outline = (f"hc-h-{next(_ANCHORS)}", title, level - 1)
+        if self.outline_level is not None and title.strip():
+            heading.ym_outline = (" ".join(title.split()), self.outline_level + level - 1)
         if level == 3:
             return [heading]
         rule = HRFlowable(

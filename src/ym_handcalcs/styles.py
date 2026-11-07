@@ -165,7 +165,7 @@ def build_stylesheet(
         add(ParagraphStyle(
             f"hcH{level}",
             parent=body,
-            fontName=fonts.sans.bold,
+            fontName=fonts.heading_family.bold,
             fontSize=base_size * scale,
             leading=base_size * scale * 1.2,
             textColor=accent if level < 3 else ink,
@@ -173,6 +173,19 @@ def build_stylesheet(
             spaceAfter=base_size * (0.2 if level < 3 else 0.35),
             keepWithNext=1,
         ))
+
+    # A heading comment shown as a label, with no heading level (``headings: flat``).
+    add(ParagraphStyle(
+        "hcLabel",
+        parent=body,
+        fontName=fonts.heading_family.bold,
+        fontSize=base_size,
+        leading=m.leading,
+        textColor=ink,
+        spaceBefore=base_size * 0.9,
+        spaceAfter=base_size * 0.2,
+        keepWithNext=1,
+    ))
 
     add(ParagraphStyle(
         "hcComment",

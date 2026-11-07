@@ -52,8 +52,9 @@ The value is either the source as a string, or a mapping:
 | `source` | | The Python source to run and render. Give `source` or `path`, not both. |
 | `path` | | Read the source from a `.py` file: the name of a `_data` source, or an absolute path. |
 | `theme_color` | `"#0B5F66"` | A dark `#RRGGBB` colour; the whole palette is derived from it. |
-| `base_size` | the document's body text size | Font size, in points, that every calc style scales from. |
+| `base_size` | the body text size of the active text style | Font size, in points, that every calc style scales from. |
 | `namespace` | none | Put the block's results in `_vars[namespace]` instead of the top level of `_vars`. |
+| `headings` | `document` | How `## ...` heading comments render: `document`, `calc` or `flat` (see [Headings](#headings)). |
 
 With `namespace: beam`, the source can still use everything in `_vars`, but the names it
 assigns go in `_vars["beam"]`, replaced each time the block runs, and later Python code
@@ -88,6 +89,36 @@ when the file changes, and `ym build` counts it as an input of the document. Nam
 source needs YMPrint 0.8 or later.
 
 Give a block an id to use it more than once in a mapping: `_hc_loads`, `_hc_moment`.
+
+### Headings
+
+A calc's heading comments (`##`, `###`, `####`) are headings of the document, not a
+separate hierarchy:
+
+| `headings` | Result |
+| --- | --- |
+| `document` (default) | A `##` heading gets the level a YAML heading at the block's position would get, and `###` and `####` the next two levels. They use the document's heading styles (h1–h6) and join its PDF bookmarks. The accent rule under the first two levels stays. |
+| `calc` | The calc's own heading sizes (2×, 1.45× and 1.2× the base size) and accent colour. They still join the bookmarks, under the heading that holds the block. |
+| `flat` | Bold labels at the base size, with no heading level and no bookmark. |
+
+```yaml
+Calculations:          # h1
+  - Beam B01:          # h2
+    - _hc:
+        path: beam_calc   # its `## Moment check` is h3, `### Factored moment` is h4
+```
+
+So a calculation renders correctly at any depth, including inside a partial document
+(`_include`).
+
+In every mode, the calc follows the active text style (`_textstyle`):
+its base size is that style's body size, prose comments (`# ...`) use its body font and
+headings use its heading font. Math keeps DejaVuSans, which has the Greek letters and
+operators that a document font such as Helvetica lacks. A font without registered bold
+and italic faces isn't inherited.
+
+`document` mode and the bookmarks need YMPrint 0.11 or later. With an older YMPrint, the
+calc uses `calc` headings.
 
 ## Using the renderer directly
 

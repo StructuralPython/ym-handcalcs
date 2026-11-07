@@ -12,6 +12,7 @@ renders it with handcalcs.
       theme_color: "#0B5F66"
       base_size: 9.5
       namespace: beam
+      headings: document    # or calc, or flat
 
     _hc_column:
       path: column_calc     # a .py `_data` source, or an absolute path to a .py file
@@ -21,6 +22,7 @@ values from ``_vars`` and earlier blocks, and later blocks can use its results.
 With ``namespace``, its results go in ``_vars[namespace]`` instead, leaving the
 top level of ``_vars`` untouched. With ``path`` instead of ``source``, the source
 is read from a ``.py`` file: the name of a ``_data`` source, or an absolute path.
+``headings`` sets how heading comments (``## ...``) render; see ``document_style``.
 ymprint registers this block itself when ym_handcalcs is installed
 (``pip install ymprint[hc]``).
 """
@@ -33,11 +35,15 @@ from typing import Any
 from handcalcs import HandCalcs, get_option
 from handcalcs.parsing import line_values
 
-from .renderer import ReportLabRenderer
+from .fonts import Fonts, family_from_name, missing_fonts
+from .renderer import HEADING_MODES, ReportLabRenderer
+
+# ymprint's text styles define h1..h6.
+MAX_HEADING_LEVEL = 6
 
 BLOCK_CODE = "_hc"
 SOURCE_OPTIONS = {"source", "path"}
-OPTIONS = SOURCE_OPTIONS | {"theme_color", "base_size", "namespace"}
+OPTIONS = SOURCE_OPTIONS | {"theme_color", "base_size", "namespace", "headings"}
 
 
 def block_options(block_key: str, block_value: Any) -> dict:
@@ -61,6 +67,9 @@ def block_options(block_key: str, block_value: Any) -> dict:
     namespace = block_value.get("namespace")
     if namespace is not None and not (isinstance(namespace, str) and namespace.isidentifier()):
         raise ValueError(f"{block_key}: 'namespace' must be a Python identifier, got {namespace!r}.")
+    headings = block_value.get("headings")
+    if headings is not None and headings not in HEADING_MODES:
+        raise ValueError(f"{block_key}: 'headings' must be one of {', '.join(HEADING_MODES)}, got {headings!r}.")
     path = block_value.get("path")
     if "path" in block_value and not (isinstance(path, str) and path.strip()):
         raise ValueError(f"{block_key}: 'path' must be a data source name or an absolute path, got {path!r}.")
@@ -147,6 +156,64 @@ def namespace_results(source: str, document_vars: dict, run_vars: dict) -> dict:
     }
 
 
+def document_style(options: dict, context: dict) -> dict:
+    """
+    The renderer settings that place the calc in the document: base size, fonts,
+    heading mode and styles, and outline level.
+
+    ymprint 0.11+ tells a block where it sits (``context["section"]``: the heading
+    level a heading there would get, and the active text style). With it, the
+    calc's headings continue the document's (``headings: document``, the default):
+    ``##`` gets that level, ``###`` the next and ``####`` the one after, in the
+    document's heading styles, and they join its bookmarks. Without it (older
+    ymprint), the calc keeps its own heading styles.
+    """
+    section = context.get("section")
+    mode = options.get("headings") or ("document" if section is not None else "calc")
+    family = _family(context, section["text_style"] if section is not None else "default")
+    style = family["ymprint"] if family is not None else context["styles"]["ymprint"]
+    settings = {
+        "base_size": options.get("base_size", style.body.size),
+        "fonts": inherited_fonts(style),
+        "headings": mode,
+    }
+    if section is not None and mode != "flat":
+        level = section["level"]
+        settings["outline_level"] = level
+        if mode == "document" and family is not None:
+            sheet = family["rl"]
+            settings["heading_styles"] = {
+                n: sheet[f"h{min(level + n - 1, MAX_HEADING_LEVEL)}"] for n in (1, 2, 3)
+            }
+    return settings
+
+
+def _family(context: dict, name: str):
+    families = context["styles"].get("families") or {}
+    return families.get(name) or families.get("default")
+
+
+def inherited_fonts(style) -> Fonts:
+    """
+    The renderer fonts with the document's heading and prose fonts: comments use
+    the body font and headings the heading font. Math keeps DejaVuSans, which has
+    the Greek letters and operators that a document font (e.g. Helvetica) may
+    lack. A font without registered bold/italic faces is not inherited.
+    """
+    fonts = Fonts()
+    body = family_from_name(style.body.font)
+    heading = family_from_name(style.headings.font)
+    candidate = Fonts(
+        sans=fonts.sans,
+        serif=body if body is not None else fonts.serif,
+        mono=fonts.mono,
+        heading=heading,
+    )
+    if missing_fonts(candidate):
+        return fonts
+    return candidate
+
+
 def convert_hc_block(block_key: str, block_value: Any, context: dict) -> list:
     options = block_options(block_key, block_value)
     source, filename = block_source(block_key, options, context)
@@ -165,7 +232,7 @@ def convert_hc_block(block_key: str, block_value: Any, context: dict) -> list:
         context["vars"][namespace] = namespace_results(source, context["vars"], run_vars)
     renderer = ReportLabRenderer(
         theme_color=options.get("theme_color"),
-        base_size=options.get("base_size", context["styles"]["ymprint"].body.size),
+        **document_style(options, context),
     )
     result = HandCalcs(renderer=renderer).render_run(source, run_vars, values)
     return list(result["story"])

@@ -785,12 +785,12 @@ requires-dist = [
 dev = [
     { name = "numpy", specifier = ">=2.3.0" },
     { name = "pytest", specifier = ">=9.0.3" },
-    { name = "ymprint", specifier = ">=0.10.2" },
+    { name = "ymprint", specifier = ">=0.11.0" },
 ]
 
 [[package]]
 name = "ymprint"
-version = "0.10.2"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
@@ -804,7 +804,7 @@ dependencies = [
     { name = "typer" },
     { name = "wenmode" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/5b/d126a37bc933eb24a79f97f6995b06ec3a06a57853e54bd0067fcd731a38/ymprint-0.10.2.tar.gz", hash = "sha256:0dfa55db723473254f8850dd8b63c6e1bd6d80ab835aa39d96a35493287d9076", size = 9943233, upload-time = "2026-11-03T14:17:43.603Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/9a/b96deb448d1dcf70ac81b7e23ae052d62d4052b4109ad50332616093f868/ymprint-0.11.0.tar.gz", hash = "sha256:c9472db1d26c1b3b2d142060e4f541470edb1984ed1bee9a619abf5933724630", size = 9949376, upload-time = "2026-11-07T21:09:43.354Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/04/6a5276abe5e9f1f028df6723adc7a29c0595f479d62aa717c0e2c06dc820/ymprint-0.10.2-py3-none-any.whl", hash = "sha256:d59682c1da5db9ef1864d279497a7a3350468d17afd81510d8fd4dfc978f7f7f", size = 9961804, upload-time = "2026-11-03T14:17:40.745Z" },
+    { url = "https://files.pythonhosted.org/packages/45/03/e413cec8874f5218bc714a099fffbe54511cb6db33b5b1ebe96cdc511ce0/ymprint-0.11.0-py3-none-any.whl", hash = "sha256:fd2d2ff6a8b8da93b8a90cf60e189dd583dead2bda03fa5ca1d18996728da2ae", size = 9968939, upload-time = "2026-11-07T21:09:41.093Z" },
 ]
