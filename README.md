@@ -49,7 +49,8 @@ The value is either the source as a string, or a mapping:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `source` | (required) | The Python source to run and render. |
+| `source` | | The Python source to run and render. Give `source` or `path`, not both. |
+| `path` | | Read the source from a `.py` file: the name of a `_data` source, or an absolute path. |
 | `theme_color` | `"#0B5F66"` | A dark `#RRGGBB` colour; the whole palette is derived from it. |
 | `base_size` | the document's body text size | Font size, in points, that every calc style scales from. |
 | `namespace` | none | Put the block's results in `_vars[namespace]` instead of the top level of `_vars`. |
@@ -60,6 +61,31 @@ reads them as `beam["M_f"]`. The top level of `_vars` is left as it was, though 
 the source changes in place (`loads.append(...)`) is changed there too. Unlike a `_py`
 block's `namespace`, functions and generator expressions in the source can use names it
 assigned earlier.
+
+### The source in a `.py` file
+
+With `path`, the source is read from a `.py` file instead of being written in the document.
+Declare the file once as a data source in the project config, and use its name:
+
+```yaml
+# project.ymprint.yml
+_data:
+  beam_calc: calcs/beam_moment.py
+```
+
+```yaml
+# docs/beam.yml
+Beam design:
+  - _hc:
+      path: beam_calc
+      namespace: beam
+```
+
+`path` can also be an absolute path to a `.py` file. A relative path is an error: declare
+the file in `_data` instead, so documents don't contain paths. The file runs exactly as an
+inline `source` would, and an error in it is reported against the file. `ym live` re-renders
+when the file changes, and `ym build` counts it as an input of the document. Naming a data
+source needs YMPrint 0.8 or later.
 
 Give a block an id to use it more than once in a mapping: `_hc_loads`, `_hc_moment`.
 

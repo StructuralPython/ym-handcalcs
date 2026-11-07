@@ -27,5 +27,5 @@ name = "ym_handcalcs"
 dev = [
     "numpy>=2.3.0",
     "pytest>=9.0.3",
-    "ymprint>=0.6.0",
+    "ymprint>=0.10.2",
 ]
