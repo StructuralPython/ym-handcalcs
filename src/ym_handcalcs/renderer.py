@@ -356,10 +356,8 @@ class ReportLabRenderer(BaseRenderer):
     def grid_flowable(self, grid: Grid, depth: int) -> Flowable:
         m = self.metrics
         if grid.kind == "params":
-            cells = [cell for row in grid.rows for cell in row]
-            cols = max((len(row) for row in grid.rows), default=1)
             return ParamGrid(
-                cells, cols, self.cell_styles(), self.style("hcParams"),
+                grid.rows, self.cell_styles(), self.style("hcParams"),
                 gap=m.base_size * 1.6, pad=m.base_size * 0.3,
                 zebra=self.palette.color("zebra"),
                 space_before=m.gap * 2, space_after=m.gap, matrices=self.matrices,
