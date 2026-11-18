@@ -28,6 +28,7 @@ ymprint registers this block itself when ym_handcalcs is installed
 """
 from __future__ import annotations
 
+import ast
 import pathlib
 import symtable
 from typing import Any
@@ -131,11 +132,59 @@ def run_source(source: str, namespace: dict, filename: str = "<handcalcs>"):
 def bound_names(source: str) -> set[str]:
     """The names 'source' binds at its top level (comprehension variables excluded)."""
     table = symtable.symtable(source, "<handcalcs>", "exec")
-    return {
-        symbol.get_name()
-        for symbol in table.get_symbols()
-        if (symbol.is_assigned() or symbol.is_imported()) and not symbol.is_comp_iter()
-    }
+    loop_only = None
+    names = set()
+    for symbol in table.get_symbols():
+        if not (symbol.is_assigned() or symbol.is_imported()):
+            continue
+        is_comp_iter = getattr(symbol, "is_comp_iter", None)  # Python 3.14+
+        if is_comp_iter is not None:
+            if is_comp_iter():
+                continue
+        else:
+            if loop_only is None:
+                loop_only = comprehension_only_names(source)
+            if symbol.get_name() in loop_only:
+                continue
+        names.add(symbol.get_name())
+    return names
+
+
+def comprehension_only_names(source: str) -> set[str]:
+    """
+    The names 'source' binds at its top level only as a comprehension's loop
+    variable (``x`` in ``[x * 2 for x in xs]``). Before Python 3.14, which added
+    ``symtable.Symbol.is_comp_iter``, the symbol table lists them as assigned at
+    the top level, since comprehensions are inlined (PEP 709).
+    """
+    loop_targets: set[str] = set()
+    other: set[str] = set()
+
+    def stored(node: ast.AST, into: set[str]) -> None:
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                into.add(child.id)
+
+    def visit(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.comprehension):
+                stored(child.target, loop_targets)
+                for part in (child.iter, *child.ifs):
+                    visit(part)
+            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                other.add(child.name)  # its body is its own scope
+            elif isinstance(child, ast.Lambda):
+                continue
+            elif isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                other.add(child.id)
+            elif isinstance(child, (ast.Import, ast.ImportFrom)):
+                for alias in child.names:
+                    other.add((alias.asname or alias.name).split(".")[0])
+            else:
+                visit(child)
+
+    visit(ast.parse(source))
+    return loop_targets - other
 
 
 def namespace_results(source: str, document_vars: dict, run_vars: dict) -> dict:
