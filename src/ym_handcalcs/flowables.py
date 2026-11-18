@@ -173,18 +173,26 @@ def _column_widths(rows: list[list[Paragraph]], pad: float) -> list[float]:
 class ParamGrid(_TableHost):
     """
     A params grid: ``id = value [comment]`` groups aligned on ``=``, centred.
-    Starts with ``cols`` groups per row and steps down to 1 until it fits.
+
+    ``rows`` are handcalcs' grid rows (``None`` pads a short row). The grid keeps
+    them: a ``;`` grid has the rows of its source, a ``# hc: -g`` grid rows of
+    ``param_cols``. When the grid is too wide it steps down to fewer groups per row,
+    to 1: a uniform grid (every row but the last as long as the first) reflows as a
+    whole, and an uneven one splits each long row in place, so its rows stay apart.
     """
 
     align = "CENTER"
 
-    def __init__(self, cells: list, cols: int, styles: dict, table_style, gap: float,
+    def __init__(self, rows: list, styles: dict, table_style, gap: float,
                  pad: float, zebra=None, space_before: float = 0.0, space_after: float = 0.0,
                  matrices: dict | None = None):
         super().__init__(space_before, space_after)
         self.matrices = matrices
-        self.cells = [cell for cell in cells if cell is not None]
-        self.cols = max(1, cols)
+        self.rows = [[cell for cell in row if cell is not None] for row in rows]
+        self.rows = [row for row in self.rows if row]
+        self.cells = [cell for row in self.rows for cell in row]
+        self.cols = max((len(row) for row in self.rows), default=1)
+        self.uniform = all(len(row) == self.cols for row in self.rows[:-1])
         self.styles = styles
         self.table_style = table_style
         self.gap = gap
@@ -205,9 +213,14 @@ class ParamGrid(_TableHost):
             paras.append(Paragraph(comment, self.styles["comment"]))
         return paras
 
+    def groups(self, cols: int) -> list[list]:
+        """The cells of each table row, at no more than ``cols`` groups per row."""
+        source = [self.cells] if self.uniform else self.rows
+        return [row[k:k + cols] for row in source for k in range(0, len(row), cols)]
+
     def _table_for(self, cols: int) -> Table:
         per_cell = 4 if self.with_comments else 3
-        groups = [self.cells[k:k + cols] for k in range(0, len(self.cells), cols)]
+        groups = self.groups(cols)
         rows = []
         for group in groups:
             row: list = []

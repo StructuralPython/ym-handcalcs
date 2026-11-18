@@ -510,6 +510,27 @@ def test_params_grid_steps_down_columns_to_fit():
     assert wide == 3 and grid.cols_used == 1
 
 
+def grid_rows(grid, width):
+    """The identifiers in each row of ``grid`` laid out at ``width``."""
+    grid.wrap(width, 1000)
+    return [[cell[0] for cell in row] for row in grid.groups(grid.cols_used)]
+
+
+def test_params_grid_keeps_the_source_rows():
+    story = render("a = 1; b = 2; c = 3; d = 4\ne = 5;\nf = 6; g = 7\n")["story"]
+    grid = next(f for _, f in leaves(story) if isinstance(f, ParamGrid))
+    assert grid_rows(grid, 500) == [["a", "b", "c", "d"], ["e"], ["f", "g"]]
+    # Too narrow: each long row splits in place; the rows stay apart.
+    assert grid_rows(grid, 120) == [["a", "b"], ["c", "d"], ["e"], ["f", "g"]]
+
+
+def test_uniform_params_grid_reflows_as_a_whole():
+    story = render("# hc: -g\na = 1\nb = 2\nc = 3\nd = 4\n")["story"]
+    grid = next(f for _, f in leaves(story) if isinstance(f, ParamGrid))
+    assert grid_rows(grid, 500) == [["a", "b", "c"], ["d"]]
+    assert grid_rows(grid, 120) == [["a", "b"], ["c", "d"]]
+
+
 # --- CalcBlock: runs of calc lines aligned on "=" ----------------------------
 
 def blocks(story: list) -> list[CalcBlock]:
