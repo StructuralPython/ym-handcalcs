@@ -7,7 +7,7 @@ authors = [
 ]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "handcalcs>=2.0.0rc2",
     "reportlab>=4.5.1",
@@ -27,5 +27,7 @@ name = "ym_handcalcs"
 dev = [
     "numpy>=2.3.0",
     "pytest>=9.0.3",
-    "ymprint>=0.11.0",
+    # Python 3.14 only until a ymprint release supports 3.13 (it requires
+    # ym-handcalcs, so this one is released first); then drop the marker.
+    "ymprint>=0.11.0; python_version >= '3.14'",
 ]
