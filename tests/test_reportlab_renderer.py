@@ -36,6 +36,7 @@ from ym_handcalcs import (
     DEFAULT_THEME, Fonts, FontFamily, Palette, ReportLabRenderer, build_pdf,
 )
 from ym_handcalcs.breaking import NBSP, elide_collections, ranked_breaks, with_breaks
+from handcalcs.parsing.block_nodes import ParamsBlock
 from ym_handcalcs.flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid
 
 GOLDEN_DIR = pathlib.Path(__file__).parent / "golden"
@@ -516,6 +517,10 @@ def grid_rows(grid, width):
     return [[cell[0] for cell in row] for row in grid.groups(grid.cols_used)]
 
 
+@pytest.mark.skipif(
+    "row_sizes" not in ParamsBlock.__dataclass_fields__,
+    reason="this handcalcs reflows ; grids itself (before handcalcs#382)",
+)
 def test_params_grid_keeps_the_source_rows():
     story = render("a = 1; b = 2; c = 3; d = 4\ne = 5;\nf = 6; g = 7\n")["story"]
     grid = next(f for _, f in leaves(story) if isinstance(f, ParamGrid))
