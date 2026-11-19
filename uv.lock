@@ -133,7 +133,7 @@ wheels = [
 
 [[package]]
 name = "handcalcs"
-version = "2.0.0rc2"
+version = "2.0.0rc5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "innerscope" },
@@ -141,9 +141,9 @@ dependencies = [
     { name = "pfst" },
     { name = "platformdirs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/1f/b1aef35a2f2a64c56595f2810479a280de7c6b288c7a251ccffb84c6938b/handcalcs-2.0.0rc2.tar.gz", hash = "sha256:622fb475e80675084323877e5bb48d9ec184d09146879b753280686c080d8682", size = 155568, upload-time = "2026-10-29T00:14:07.049Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/54/2983e27d70ef84c9975594207736428bf45d20b2fdbd1d32f530c287f964/handcalcs-2.0.0rc5.tar.gz", hash = "sha256:a2dc163679559f45c3064f8841c5c234fb6aa7516744ea70a01c7eb666266dba", size = 191089, upload-time = "2026-11-19T02:44:15.44Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/93/2fae4bc9dc6a71d7b3f6c1a721aa9f9d72b01cf03d7418ba86e5cd7b0cbb/handcalcs-2.0.0rc2-py3-none-any.whl", hash = "sha256:904f99e350f9ed1e3823e4e2a97cc06f1ec721b427e1769af66cb11a2e1ef3c7", size = 176379, upload-time = "2026-10-29T00:14:05.646Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/87/4ec1aa695871478acfd9d73ba2c6a2510a0c0d3ad1284554b21c938a8b52/handcalcs-2.0.0rc5-py3-none-any.whl", hash = "sha256:0e4d955cf66a285e98d71d12eceda8021df6a8e5460aa8de2509695186ccbbe0", size = 215655, upload-time = "2026-11-19T02:44:13.555Z" },
 ]
 
 [[package]]
@@ -777,7 +777,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "handcalcs", specifier = ">=2.0.0rc2" },
+    { name = "handcalcs", specifier = ">=2.0.0rc5" },
     { name = "reportlab", specifier = ">=4.5.1" },
 ]
 
