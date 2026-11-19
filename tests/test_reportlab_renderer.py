@@ -361,6 +361,15 @@ def test_every_exponent_is_a_superscript():
     build(story)
 
 
+def test_a_substituted_sum_is_bracketed():
+    # A complex value with both parts is a sum (handcalcs#224): bracketed as a
+    # power's base, a factor and a negated operand.
+    text = dump(render("z = 3+4j\na = z**2\nb = 2 * z\nc = -z\n")["story"])
+    assert "(3+4j)<sup>2</sup>" in text
+    assert "2 · (3+4j)" in text
+    assert "-(3+4j)" in text
+
+
 # -- maths modules ---------------------------------------------------------------
 
 def test_math_prefix_is_dropped_from_function_calls():
