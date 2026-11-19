@@ -346,6 +346,64 @@ def test_backticks_in_prose_become_code():
     assert '<font name="DejaVuSansMono">math.pi</font>' in text
 
 
+def test_families_map_their_bold_and_italic_faces():
+    # Registering a TTF maps every style to that one face, which used to read as
+    # "already mapped", so <b> and <i> never changed the font outside ymprint.
+    from reportlab.lib.fonts import tt2ps
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    from ym_handcalcs.fonts import FontFamily, Fonts, register_families
+
+    known = Fonts().sans
+    names = FontFamily("HcTestSans", "HcTestSans-B", "HcTestSans-I", "HcTestSans-BI")
+    for name, face in zip(names.faces, known.faces):
+        pdfmetrics.registerFont(TTFont(name, pdfmetrics.getFont(face).face.filename))
+    assert tt2ps(names.regular, 1, 0) == names.regular  # The self-mapping.
+    register_families(Fonts(sans=names))
+    assert tt2ps(names.regular, 1, 0) == names.bold
+    assert tt2ps(names.regular, 0, 1) == names.italic
+    assert tt2ps(names.regular, 1, 1) == names.bold_italic
+
+
+def test_markdown_in_comment_lines():
+    # A run of comment lines is read as one: emphasis may span the line break.
+    source = "# Use **strong** and *emphasis*, *over\n# two* lines\nx = 1\n"
+    story = render(source)["story"]
+    text = dump(story)
+    assert "Use <b>strong</b> and <i>emphasis</i>, <i>over two</i> lines" in text
+    build(story)
+
+
+def test_markdown_links_in_prose():
+    text = dump(render("# See [the code](https://example.com/a?b=1&c=2)\nx = 1\n")["story"])
+    assert '<link href="https://example.com/a?b=1&amp;c=2"><u>the code</u></link>' in text
+
+
+def test_comment_text_that_looks_like_blocks_stays_as_written():
+    # Only inline Markdown: no lists, headings, quotes or raw HTML.
+    story = render("# 1. Loads - dead\nx = 1\n# > a <b>quote</b>\ny = 2\n")["story"]
+    text = dump(story)
+    assert "1. Loads - dead" in text
+    assert "&gt; a &lt;b&gt;quote&lt;/b&gt;" in text
+    build(story)
+
+
+def test_arithmetic_in_comments_is_not_emphasis():
+    text = dump(render("# M = w*L**2/8 for a_b_c\nx = 1\n")["story"])
+    assert "M = w*L**2/8 for a_b_c" in text
+
+
+def test_markdown_in_inline_comments_and_headings():
+    story = render("## The `M_f` **check**\nx = 1  # see *Table 2* and **Cl. 9**\n")["story"]
+    text = dump(story)
+    # Headings set code in the bold monospaced face.
+    assert '<font name="DejaVuSansMono-Bold">M_f</font> <b>check</b>' in text
+    # Inline comments are italic: their emphasis is upright.
+    assert "see </i>Table 2<i> and <b>Cl. 9</b>" in text
+    build(story)
+
+
 # -- powers ----------------------------------------------------------------------
 
 def test_every_exponent_is_a_superscript():

@@ -11,6 +11,7 @@ requires-python = ">=3.14"
 dependencies = [
     "handcalcs>=2.0.0rc5",
     "reportlab>=4.5.1",
+    "wenmode>=0.15.3",
 ]
 
 [project.urls]

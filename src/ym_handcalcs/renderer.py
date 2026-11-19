@@ -32,6 +32,7 @@ from handcalcs.renderers.base import (
 from .flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid, inline_matrices
 from .fonts import Fonts, missing_fonts, register_families
 from .markers import MATRIX_CLOSE, MATRIX_OPEN, CalcComponents, Grid, Tagged
+from .prose import CommentProseMarkup, ProseMarkup, prose_markup
 from .styles import Metrics, Palette, build_stylesheet
 from .symbols import register_symbol_rules
 
@@ -69,11 +70,6 @@ _MATRICES = itertools.count(1)
 def plain_text(markup: str) -> str:
     """Paragraph markup with its tags removed (for bookmark titles)."""
     return re.sub(r"<[^>]+>", "", markup).replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
-
-
-def code_spans(text: str, font: str) -> str:
-    """Set each pair of `backticks` in prose in the monospaced font."""
-    return re.sub(r"`([^`]+)`", rf'<font name="{font}">\1</font>', text)
 
 
 class ReportLabRenderer(BaseRenderer):
@@ -129,6 +125,11 @@ class ReportLabRenderer(BaseRenderer):
         register_families(fonts)
         self.palette = palette
         self.fonts = fonts
+        # Inline Markdown in prose (see ``prose``): comment lines and docstrings,
+        # headings (bold), and inline comments (italic).
+        self.prose = ProseMarkup(fonts.mono.regular)
+        self.heading_prose = ProseMarkup(fonts.mono.bold)
+        self.comment_prose = CommentProseMarkup(fonts.mono.italic)
         # Rows of cell markup for each matrix token in the rendered markup.
         self.matrices: dict[str, list[list[str]]] = {}
         self.metrics = Metrics(base_size)
@@ -280,7 +281,6 @@ class ReportLabRenderer(BaseRenderer):
         return f'<font color="{p.accent}" backColor="{p.highlight}"><b>{text}</b></font>'
 
     def comment_markup(self, text: str) -> str:
-        text = code_spans(text, self.fonts.mono.italic)
         return f"{self.comment_open}{text}</i></font>"
 
     def calc_flowable(self, calc: CalcComponents, depth: int) -> Flowable:
@@ -306,7 +306,7 @@ class ReportLabRenderer(BaseRenderer):
         if item.kind == "heading":
             return self.heading_flowables(item)
         if item.kind == "prose":
-            return [Paragraph(code_spans(str(item), self.fonts.mono.regular), self.style("hcComment"))]
+            return [Paragraph(str(item), self.style("hcComment"))]
         if item.kind == "import":
             return [Chip(Paragraph(str(item), self.style("hcImport")), self.palette.color("code_bg"))]
         return [Paragraph(str(item), self.style("hcNote"))]
@@ -406,23 +406,27 @@ register_symbol_rules(RLR)
 
 @RLR.register("heading")
 def render_heading(renderer: RLR, node: Heading, base_context: BRC) -> Tagged:
-    return Tagged(escape(node.content), "heading", node.heading_level)
+    return Tagged(prose_markup(node.content, renderer.heading_prose), "heading", node.heading_level)
 
 
 @RLR.register("comment_line")
 def render_comment_line(renderer: RLR, node: CommentLine, base_context: BRC) -> str:
-    return escape(node.content)
+    return prose_markup(node.content, renderer.prose)
 
 
 @RLR.register("comments_block")
 def render_comments_block(renderer: RLR, node: CommentsBlock, base_context: BRC) -> str:
-    # A run of comment lines is prose: one paragraph, lines joined by a space.
-    # Comment commands render to '' and drop out.
-    lines = [renderer.render(line, base_context) for line in node.lines]
-    texts = [line for line in lines if isinstance(line, str) and line.strip()]
+    # A run of comment lines is prose: one paragraph, lines joined by a space,
+    # and its inline Markdown read as a whole (emphasis may span lines).
+    # Comment commands and hidden lines render to '' and drop out.
+    texts = []
+    for line in node.lines:
+        rendered = renderer.render(line, base_context)
+        if isinstance(rendered, str) and rendered.strip():
+            texts.append(line.content if line.type == "comment_line" else rendered)
     if not texts:
         return ""
-    return Tagged(" ".join(texts), "prose")
+    return Tagged(prose_markup(" ".join(texts), renderer.prose), "prose")
 
 
 @RLR.register("import")
@@ -466,7 +470,7 @@ def mark_expr_components(renderer: RLR, rendered, node: ExprLine, base_context: 
     tree = node.expression_tree
     if len(tree) == 1 and isinstance(tree[0], Constant) and isinstance(tree[0].value, str):
         # A docstring / bare string statement is prose, not a calc.
-        return Tagged(escape(tree[0].value), "prose") if isinstance(rendered, list) else rendered
+        return Tagged(prose_markup(tree[0].value, renderer.prose), "prose") if isinstance(rendered, list) else rendered
     return mark_calc_components(renderer, rendered, node, base_context)
 
 
@@ -485,7 +489,8 @@ def render_inline_comment(renderer: RLR, node: InlineComment, base_context: BRC)
     # Comments are styled here (muted italic), so they read the same in calc
     # lines, multi-line grids and params grids.
     context = base_context.current
-    return renderer.comment_markup(f"{context.lpar}{escape(node.content)}{context.rpar}")
+    content = prose_markup(node.content, renderer.comment_prose)
+    return renderer.comment_markup(f"{escape(context.lpar)}{content}{escape(context.rpar)}")
 
 
 @RLR.register("elif_block:post")
