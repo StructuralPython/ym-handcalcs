@@ -79,12 +79,16 @@ def register_families(fonts: Fonts) -> None:
     """
     Map each family's bold/italic faces so ``<b>``/``<i>`` work inside
     paragraphs. A family that already has a mapping (e.g. set up by ymprint) is
-    left alone. No TTFs are registered here.
+    left alone. Registering a TTF maps all four styles to that one face, so a
+    family whose bold is its regular face is mapped too. No TTFs are registered
+    here.
     """
     for family in fonts.families:
         try:
-            tt2ps(family.regular, 1, 0)
+            mapped = tt2ps(family.regular, 1, 0) != family.regular
         except ValueError:
+            mapped = False
+        if not mapped:
             pdfmetrics.registerFontFamily(
                 family.regular,
                 normal=family.regular,

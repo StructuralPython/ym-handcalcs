@@ -36,7 +36,6 @@ from ym_handcalcs import (
     DEFAULT_THEME, Fonts, FontFamily, Palette, ReportLabRenderer, build_pdf,
 )
 from ym_handcalcs.breaking import NBSP, elide_collections, ranked_breaks, with_breaks
-from handcalcs.parsing.block_nodes import ParamsBlock
 from ym_handcalcs.flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid
 
 GOLDEN_DIR = pathlib.Path(__file__).parent / "golden"
@@ -346,6 +345,64 @@ def test_backticks_in_prose_become_code():
     assert '<font name="DejaVuSansMono">math.pi</font>' in text
 
 
+def test_families_map_their_bold_and_italic_faces():
+    # Registering a TTF maps every style to that one face, which used to read as
+    # "already mapped", so <b> and <i> never changed the font outside ymprint.
+    from reportlab.lib.fonts import tt2ps
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    from ym_handcalcs.fonts import FontFamily, Fonts, register_families
+
+    known = Fonts().sans
+    names = FontFamily("HcTestSans", "HcTestSans-B", "HcTestSans-I", "HcTestSans-BI")
+    for name, face in zip(names.faces, known.faces):
+        pdfmetrics.registerFont(TTFont(name, pdfmetrics.getFont(face).face.filename))
+    assert tt2ps(names.regular, 1, 0) == names.regular  # The self-mapping.
+    register_families(Fonts(sans=names))
+    assert tt2ps(names.regular, 1, 0) == names.bold
+    assert tt2ps(names.regular, 0, 1) == names.italic
+    assert tt2ps(names.regular, 1, 1) == names.bold_italic
+
+
+def test_markdown_in_comment_lines():
+    # A run of comment lines is read as one: emphasis may span the line break.
+    source = "# Use **strong** and *emphasis*, *over\n# two* lines\nx = 1\n"
+    story = render(source)["story"]
+    text = dump(story)
+    assert "Use <b>strong</b> and <i>emphasis</i>, <i>over two</i> lines" in text
+    build(story)
+
+
+def test_markdown_links_in_prose():
+    text = dump(render("# See [the code](https://example.com/a?b=1&c=2)\nx = 1\n")["story"])
+    assert '<link href="https://example.com/a?b=1&amp;c=2"><u>the code</u></link>' in text
+
+
+def test_comment_text_that_looks_like_blocks_stays_as_written():
+    # Only inline Markdown: no lists, headings, quotes or raw HTML.
+    story = render("# 1. Loads - dead\nx = 1\n# > a <b>quote</b>\ny = 2\n")["story"]
+    text = dump(story)
+    assert "1. Loads - dead" in text
+    assert "&gt; a &lt;b&gt;quote&lt;/b&gt;" in text
+    build(story)
+
+
+def test_arithmetic_in_comments_is_not_emphasis():
+    text = dump(render("# M = w*L**2/8 for a_b_c\nx = 1\n")["story"])
+    assert "M = w*L**2/8 for a_b_c" in text
+
+
+def test_markdown_in_inline_comments_and_headings():
+    story = render("## The `M_f` **check**\nx = 1  # see *Table 2* and **Cl. 9**\n")["story"]
+    text = dump(story)
+    # Headings set code in the bold monospaced face.
+    assert '<font name="DejaVuSansMono-Bold">M_f</font> <b>check</b>' in text
+    # Inline comments are italic: their emphasis is upright.
+    assert "see </i>Table 2<i> and <b>Cl. 9</b>" in text
+    build(story)
+
+
 # -- powers ----------------------------------------------------------------------
 
 def test_every_exponent_is_a_superscript():
@@ -358,6 +415,44 @@ def test_every_exponent_is_a_superscript():
     ) in text
     # A negative value substituted into the base is bracketed.
     assert "(-1.5)<sup>2</sup>" in text
+    build(story)
+
+
+def test_a_substituted_sum_is_bracketed():
+    # A complex value with both parts is a sum (handcalcs#224): bracketed as a
+    # power's base, a factor and a negated operand.
+    text = dump(render("z = 3+4j\na = z**2\nb = 2 * z\nc = -z\n")["story"])
+    assert "(3+4j)<sup>2</sup>" in text
+    assert "2 · (3+4j)" in text
+    assert "-(3+4j)" in text
+
+
+# -- boxed results ----------------------------------------------------------------
+
+def test_boxed_result_is_drawn_in_a_box(monkeypatch):
+    from ym_handcalcs import flowables
+
+    story = render("a = 2\nb = 3 * a  # hc: --boxed\n")["story"]
+    marks = f'<onDraw name="{flowables.BOX_CALLBACK}" label='
+    assert f'{marks}"open"/>6{marks}"close #' in dump(story)
+    # Drawing calls the callback at both marks; the closing one draws the box.
+    labels = []
+    draw_box = flowables.draw_box
+    monkeypatch.setattr(flowables, "draw_box", lambda c, k, label: (labels.append(label), draw_box(c, k, label)))
+    build(story)
+    assert [label.split()[0] for label in labels] == ["open", "close"]
+
+
+def test_boxed_cells_split_across_pages():
+    # A table split over a page break keeps drawing boxes: its parts are BoxTables.
+    from ym_handcalcs.flowables import BoxTable
+
+    rows = "".join(f"p_{i} = {i}\n" for i in range(40))
+    story = render(f"# hc: -g -c 1 --boxed\n{rows}")["story"]
+    grid = next(f for _, f in leaves(story) if isinstance(f, ParamGrid))
+    grid.wrap(300, 1000)
+    parts = grid.split(300, 120)
+    assert len(parts) == 2 and all(isinstance(part, BoxTable) for part in parts)
     build(story)
 
 
@@ -517,10 +612,6 @@ def grid_rows(grid, width):
     return [[cell[0] for cell in row] for row in grid.groups(grid.cols_used)]
 
 
-@pytest.mark.skipif(
-    "row_sizes" not in ParamsBlock.__dataclass_fields__,
-    reason="this handcalcs reflows ; grids itself (before handcalcs#382)",
-)
 def test_params_grid_keeps_the_source_rows():
     story = render("a = 1; b = 2; c = 3; d = 4\ne = 5;\nf = 6; g = 7\n")["story"]
     grid = next(f for _, f in leaves(story) if isinstance(f, ParamGrid))

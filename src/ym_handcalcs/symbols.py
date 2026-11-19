@@ -26,6 +26,7 @@ from handcalcs.renderers.base import (
     ROOT_SYMBOLS,
     BaseRenderContext,
     math_call_name,
+    operand_precedence,
     postfix_factorial,
     render_constant,
     render_subscript as render_bracketed_subscript,
@@ -118,14 +119,16 @@ def render_pow_op(renderer, node: HcBinOp, base_context: BRC) -> str:
     Every exponent is a superscript: ``a<sup>2</sup>``, ``a<sup>b + 1</sup>``.
     The raised position groups the exponent, so it needs no brackets. The base
     is bracketed when it binds looser than a power (``(a + b)<sup>2</sup>``,
-    ``(a<sup>b</sup>)<sup>c</sup>``) or renders with a sign (a negative value
+    ``(a<sup>b</sup>)<sup>c</sup>``, or in the numeric column a substituted
+    value that is itself a sum, ``(3+4j)<sup>2</sup>``; see handcalcs'
+    ``operand_precedence``) or renders with a sign (a negative value
     substituted in the numeric column). The exponent's spaces are made
     non-breaking so a line never wraps inside a superscript.
     """
     context = base_context.current
     base = renderer.render_node(node.left, base_context)
     if (
-        OP_PRECEDENCE.get(type(node.left), float("inf")) <= OP_PRECEDENCE[PowOp]
+        operand_precedence(node.left, base_context) <= OP_PRECEDENCE[PowOp]
         or base.lstrip().startswith(("-", "+"))
     ):
         base = f"{context.lpar}{base}{context.rpar}"

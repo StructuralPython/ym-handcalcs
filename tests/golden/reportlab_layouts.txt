@@ -3,7 +3,7 @@ line                     a
 line                     b
 line                     c
 grid:break4              x<sub>1</sub>
-grid:break2              x<sub>2</sub>
+grid:break4              x<sub>2</sub>
 line                     ω<sub>2</sub>
 line                     L
 line                     E

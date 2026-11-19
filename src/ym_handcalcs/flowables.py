@@ -10,6 +10,55 @@ from .breaking import NBSP
 from .markers import MATRIX_CLOSE, MATRIX_OPEN
 
 
+# ``# hc: --boxed``: the result is set between two ``<onDraw>`` marks (see
+# ``box_marks``). ReportLab calls the callback at each mark while it draws the
+# text, with the text position; the closing mark draws the box. ``BoxTable``
+# registers the callback on the canvas, so every table of calc cells can draw it.
+BOX_CALLBACK = "hcBox"
+
+
+def box_marks(color: str) -> tuple[str, str]:
+    """The markup put around a boxed result, drawing a box in ``color``."""
+    return (
+        f'<onDraw name="{BOX_CALLBACK}" label="open"/>',
+        f'<onDraw name="{BOX_CALLBACK}" label="close {color}"/>',
+    )
+
+
+def draw_box(canv, kind: str, label: str) -> None:
+    """The ``<onDraw>`` callback of ``box_marks``."""
+    info = canv._curr_tx_info
+    x, y, tx = info["cur_x"], info["cur_y"], info["tx"]
+    if label == "open":
+        canv._hc_box_start = (x, y)
+        return
+    start = getattr(canv, "_hc_box_start", None)
+    canv._hc_box_start = None
+    if start is None:
+        return
+    # A result that wrapped is boxed on its last line, from the line's start.
+    x0 = start[0] if start[1] == y else tx._x0
+    size = tx._fontsize or info["xs"].style.fontSize
+    leading = info["leading"]
+    # Just outside the band a result's highlight fills (one leading tall, its
+    # top a font size above the baseline), which is painted after this box.
+    pad, gap = 0.25 * size, 0.6
+    canv.saveState()
+    canv.setStrokeColor(HexColor(label.partition(" ")[2] or "#000000"))
+    canv.setLineWidth(0.6)
+    canv.rect(x0 - pad, y + size - leading - gap, x - x0 + 2 * pad, leading + 2 * gap,
+              stroke=1, fill=0)
+    canv.restoreState()
+
+
+class BoxTable(Table):
+    """A table whose cells may hold boxed results (``box_marks``); its split parts are too."""
+
+    def draw(self):
+        self.canv.setNamedCB(BOX_CALLBACK, draw_box)
+        super().draw()
+
+
 def natural_width(paragraph: Paragraph) -> float:
     """Width of the widest line of ``paragraph`` when it is not wrapped."""
     paragraph.wrap(1e6, 1e6)
@@ -240,7 +289,7 @@ class ParamGrid(_TableHost):
         commands = list(self.table_style.getCommands())
         if self.zebra is not None and len(rows) > 2:
             commands.append(("ROWBACKGROUNDS", (0, 0), (-1, -1), [None, self.zebra]))
-        return Table(rows, colWidths=widths, style=commands, hAlign=self.align)
+        return BoxTable(rows, colWidths=widths, style=commands, hAlign=self.align)
 
     def build_table(self, avail_width: float) -> Table:
         for cols in range(min(self.cols, max(1, len(self.cells))), 0, -1):
@@ -592,7 +641,7 @@ class CalcBlock(Flowable):
                 for cmd, _, _, *rest in rules:
                     commands.append((cmd, (0, first), (0, len(cells) - 1), *rest))
         val_width = max(avail_width - id_width - eq_width, 4 * self.pad)
-        return Table(cells, colWidths=[id_width, eq_width, val_width], rowHeights=heights,
+        return BoxTable(cells, colWidths=[id_width, eq_width, val_width], rowHeights=heights,
                      style=commands, hAlign="LEFT")
 
     def wrap(self, avail_width, avail_height):

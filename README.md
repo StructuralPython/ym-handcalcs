@@ -43,7 +43,10 @@ Beam design:
 The source runs in the document's `_vars`, like a `_py` block: it can use values from
 `_vars` and earlier blocks, and later blocks (and `{{ }}` interpolation) can use its
 results. As in handcalcs, `## ...` comments are headings, `# ...` comments are prose,
-inline comments annotate their line, and `# hc:` commands work as usual.
+inline comments annotate their line, and `# hc:` commands work as usual. Comments take
+inline Markdown, as the rest of a ymprint document does: `**bold**`, `*italic*`,
+`` `code` `` and `[links](https://...)`. A comment that starts with `1.`, `-` or `>`
+stays as written.
 
 The value is either the source as a string, or a mapping:
 

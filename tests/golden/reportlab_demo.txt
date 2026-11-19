@@ -11,8 +11,8 @@ Spacer
 CalcLine: a = 5.25
 CalcLine: b = -1.04231e+01
 CalcLine: c = 2
-CalcLine: x<sub>1</sub> = (-b + √(b<sup>2</sup> - 4 · a · c)) / (2 · a) = (-(-10.423) + √((-10.423)<sup>2</sup> - 4 · 5.2539 · 2)) / (2 · 5.2539) = 1.7686
-CalcLine: x<sub>2</sub> = (-b - √(b<sup>2</sup> - 4 · a · c)) / (2 · a) = (-(-10.423) - √((-10.423)<sup>2</sup> - 4 · 5.2539 · 2)) / (2 · 5.2539) = 0.21523
+CalcLine: x<sub>1</sub> = (-b + √(b<sup>2</sup> - 4 · a · c)) / (2 · a) = (-(-1.04231e+01) + √((-1.04231e+01)<sup>2</sup> - 4 · 5.25 · 2)) / (2 · 5.25) = 1.7686
+CalcLine: x<sub>2</sub> = (-b - √(b<sup>2</sup> - 4 · a · c)) / (2 · a) = (-(-1.04231e+01) - √((-1.04231e+01)<sup>2</sup> - 4 · 5.25 · 2)) / (2 · 5.25) = 0.21523
 Paragraph[hcComment]: Params grid type 1
 ParamGrid(cols=3): f = 1; g = 2; h = 4
 Paragraph[hcComment]: Params grid type 2 (Comments allowed)
