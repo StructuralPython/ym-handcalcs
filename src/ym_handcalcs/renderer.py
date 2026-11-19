@@ -29,7 +29,9 @@ from handcalcs.renderers.base import (
     render_condition,
 )
 
-from .flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid, inline_matrices
+from .flowables import (
+    BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid, box_marks, inline_matrices,
+)
 from .fonts import Fonts, missing_fonts, register_families
 from .markers import MATRIX_CLOSE, MATRIX_OPEN, CalcComponents, Grid, Tagged
 from .prose import CommentProseMarkup, ProseMarkup, prose_markup
@@ -130,6 +132,8 @@ class ReportLabRenderer(BaseRenderer):
         self.prose = ProseMarkup(fonts.mono.regular)
         self.heading_prose = ProseMarkup(fonts.mono.bold)
         self.comment_prose = CommentProseMarkup(fonts.mono.italic)
+        # ``# hc: --boxed`` draws a box in the accent colour around the result.
+        self.BOX = box_marks(palette.accent)
         # Rows of cell markup for each matrix token in the rendered markup.
         self.matrices: dict[str, list[list[str]]] = {}
         self.metrics = Metrics(base_size)

@@ -428,6 +428,35 @@ def test_a_substituted_sum_is_bracketed():
     assert "-(3+4j)" in text
 
 
+# -- boxed results ----------------------------------------------------------------
+
+def test_boxed_result_is_drawn_in_a_box(monkeypatch):
+    from ym_handcalcs import flowables
+
+    story = render("a = 2\nb = 3 * a  # hc: --boxed\n")["story"]
+    marks = f'<onDraw name="{flowables.BOX_CALLBACK}" label='
+    assert f'{marks}"open"/>6{marks}"close #' in dump(story)
+    # Drawing calls the callback at both marks; the closing one draws the box.
+    labels = []
+    draw_box = flowables.draw_box
+    monkeypatch.setattr(flowables, "draw_box", lambda c, k, label: (labels.append(label), draw_box(c, k, label)))
+    build(story)
+    assert [label.split()[0] for label in labels] == ["open", "close"]
+
+
+def test_boxed_cells_split_across_pages():
+    # A table split over a page break keeps drawing boxes: its parts are BoxTables.
+    from ym_handcalcs.flowables import BoxTable
+
+    rows = "".join(f"p_{i} = {i}\n" for i in range(40))
+    story = render(f"# hc: -g -c 1 --boxed\n{rows}")["story"]
+    grid = next(f for _, f in leaves(story) if isinstance(f, ParamGrid))
+    grid.wrap(300, 1000)
+    parts = grid.split(300, 120)
+    assert len(parts) == 2 and all(isinstance(part, BoxTable) for part in parts)
+    build(story)
+
+
 # -- maths modules ---------------------------------------------------------------
 
 def test_math_prefix_is_dropped_from_function_calls():
