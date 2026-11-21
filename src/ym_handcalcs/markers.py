@@ -58,3 +58,23 @@ class Grid:
 # hold a table, so value cells with a matrix are built as a ``MathRow``.
 MATRIX_OPEN = ""
 MATRIX_CLOSE = ""
+
+
+@dataclass
+class Fraction:
+    """
+    A stacked fraction inside paragraph markup. It shares the matrix token (the
+    renderer's ``matrices`` holds either rows or a ``Fraction``), so every value
+    cell that can draw a matrix can draw a fraction.
+    The flags below say how to write it on one line (``a / b``, see
+    ``flowables.inline_matrices``), for headers, plain lines and the layout
+    used when a stacked line is too wide.
+    """
+
+    numerator: str
+    denominator: str
+    # Whether each operand needs brackets when the division is written inline.
+    numerator_brackets: bool = False
+    denominator_brackets: bool = False
+    lpar: str = "("
+    rpar: str = ")"

@@ -7,7 +7,7 @@ from reportlab.lib.colors import HexColor
 from reportlab.platypus import Flowable, Paragraph, Table
 
 from .breaking import NBSP
-from .markers import MATRIX_CLOSE, MATRIX_OPEN
+from .markers import MATRIX_CLOSE, MATRIX_OPEN, Fraction
 
 
 # ``# hc: --boxed``: the result is set between two ``<onDraw>`` marks (see
@@ -499,6 +499,13 @@ class CalcLine(Flowable):
         elided = [elide_collections(col) for col in self.columns]
         if elided != self.columns:
             column_sets.append((":elided", elided))
+        # Stacked fractions never wrap: a line too wide for them writes them inline.
+        if any(has_fraction(col, self.matrices) for col in self.columns):
+            flat = [inline_fractions(col, self.matrices) for col in self.columns]
+            column_sets.append((":inline", flat))
+            flat_elided = [elide_collections(col) for col in flat]
+            if flat_elided != flat:
+                column_sets.append((":inline:elided", flat_elided))
         for suffix, columns in column_sets:
             top = max((max_rank(col) for col in columns), default=0)
             for kind in ("grid", "stack"):
@@ -692,20 +699,25 @@ def _is_multirow(line: CalcLine, layout: str) -> bool:
 
 ## MATRICES
 
-_MARKUP = re.compile(rf"<(/?)([a-zA-Z]+)[^>]*?(/?)>|{MATRIX_OPEN}(\d+){MATRIX_CLOSE}")
+_MARKUP = re.compile(rf"<(/?)([a-zA-Z]+)[^>]*?(/?)>|{MATRIX_OPEN}(\d+){MATRIX_CLOSE}|([()])")
+_TOKEN = re.compile(rf"{MATRIX_OPEN}(\d+){MATRIX_CLOSE}")
+# Tags whose content is raised or lowered: brackets inside them are never stretched.
+_SCRIPTS = ("sup", "sub", "super")
 
 
 def has_matrix(markup: str) -> bool:
     return MATRIX_OPEN in markup
 
 
-def matrix_segments(markup: str) -> list[tuple[str, str]]:
+def matrix_segments(markup: str, brackets: bool = False) -> list[tuple[str, str]]:
     """
     Split ``markup`` at its matrix tokens into ``("text", markup)`` and
     ``("matrix", id)`` pieces. Tags open across a token are closed before it and
     reopened after it, so every text piece is balanced; each matrix piece also
     carries the tags open around it (``("matrix", id, open, close)``), so a
-    matrix result keeps the result's colour and weight.
+    matrix result keeps the result's colour and weight. With ``brackets``,
+    every ``(`` and ``)`` outside a superscript or subscript is a piece of its
+    own too (``("bracket", char, open, close)``), so it can be stretched.
     """
     pieces: list = []
     stack: list[tuple[str, str]] = []
@@ -726,6 +738,14 @@ def matrix_segments(markup: str) -> list[tuple[str, str]]:
             pieces.append(("matrix", match.group(4), opening(), closing()))
             current = opening()
             continue
+        if match.group(5) is not None:
+            if brackets and not any(name in _SCRIPTS for name, _ in stack):
+                pieces.append(("text", current + closing()))
+                pieces.append(("bracket", match.group(5), opening(), closing()))
+                current = opening()
+            else:
+                current += match.group(5)
+            continue
         current += match.group(0)
         is_close, name, self_closing = match.group(1), match.group(2), match.group(3)
         if self_closing:
@@ -736,16 +756,49 @@ def matrix_segments(markup: str) -> list[tuple[str, str]]:
         else:
             stack.append((name, match.group(0)))
     pieces.append(("text", current + markup[position:]))
-    return [p for p in pieces if p[0] == "matrix" or re.sub(r"<[^>]+>", "", p[1])]
+    return [p for p in pieces if p[0] != "text" or re.sub(r"<[^>]+>", "", p[1])]
 
 
 def inline_matrices(markup: str, matrices: dict) -> str:
-    """``markup`` with each matrix token written out inline: ``[[1, 2], [3, 4]]``."""
+    """
+    ``markup`` with each matrix token written out inline, ``[[1, 2], [3, 4]]``,
+    and each fraction as an inline division, ``(a + b) / c``.
+    """
     def inline(match: re.Match) -> str:
-        rows = matrices[match.group(1)]
-        return "[" + ", ".join("[" + ", ".join(row) + "]" for row in rows) + "]"
+        value = matrices[match.group(1)]
+        if isinstance(value, Fraction):
+            return inline_fraction(value, matrices)
+        return "[" + ", ".join("[" + ", ".join(row) + "]" for row in value) + "]"
 
-    return re.sub(rf"{MATRIX_OPEN}(\d+){MATRIX_CLOSE}", inline, markup)
+    return _TOKEN.sub(inline, markup)
+
+
+def inline_fraction(fraction: Fraction, matrices: dict) -> str:
+    numerator = inline_matrices(fraction.numerator, matrices)
+    denominator = inline_matrices(fraction.denominator, matrices)
+    if fraction.numerator_brackets:
+        numerator = f"{fraction.lpar}{numerator}{fraction.rpar}"
+    if fraction.denominator_brackets:
+        denominator = f"{fraction.lpar}{denominator}{fraction.rpar}"
+    return f"{numerator} / {denominator}"
+
+
+def inline_fractions(markup: str, matrices: dict) -> str:
+    """``markup`` with its fractions written inline and its matrices kept."""
+    def inline(match: re.Match) -> str:
+        value = matrices[match.group(1)]
+        return inline_fraction(value, matrices) if isinstance(value, Fraction) else match.group(0)
+
+    previous = None
+    while previous != markup:  # a fraction's operands may hold fractions
+        previous, markup = markup, _TOKEN.sub(inline, markup)
+    return markup
+
+
+def has_fraction(markup: str, matrices: dict | None) -> bool:
+    return bool(matrices) and any(
+        isinstance(matrices.get(key), Fraction) for key in _TOKEN.findall(markup)
+    )
 
 
 def _flat(style, name: str, **kwargs):
@@ -755,6 +808,23 @@ def _flat(style, name: str, **kwargs):
 
 
 _BACK_COLOR = re.compile(r'\s+backColor="([^"]*)"')
+
+# The maths axis (where a fraction bar and the middle of a minus sign sit), as a
+# fraction of the font size above the baseline.
+AXIS = 0.3
+
+
+def text_axis(paragraph: Paragraph) -> float:
+    """Height of the maths axis above the bottom of a one-line ``paragraph`` (wrapped)."""
+    style = paragraph.style
+    # ReportLab sets the first baseline a font size below the paragraph's top.
+    return paragraph.height - style.fontSize + AXIS * style.fontSize
+
+
+def axis_of(part: Flowable) -> float:
+    if isinstance(part, Paragraph):
+        return text_axis(part)
+    return getattr(part, "axis", part.height / 2)
 
 
 class Matrix(Flowable):
@@ -795,6 +865,7 @@ class Matrix(Flowable):
         content = sum(self.col_widths) + self.col_gap * max(0, len(self.col_widths) - 1)
         self.width = content + 2 * self.inset
         self.height = sum(self.row_heights)
+        self.axis = self.height / 2
         return self.width, self.height
 
     def draw(self):
@@ -825,43 +896,182 @@ class Matrix(Flowable):
         canvas.restoreState()
 
 
-class MathRow(Flowable):
+# A fraction's operands are set this much smaller than the text around it, and
+# smaller again in a fraction inside an operand.
+FRACTION_SCALE = (1.0, 0.85)
+
+
+class FractionFlowable(Flowable):
     """
-    Value markup that contains matrices: its text pieces and ``Matrix`` pieces
-    side by side on one row, centred vertically. It never wraps; like a
-    paragraph it reports its line widths (one line), so ``natural_width`` and
-    ``fits_width`` measure it and a calc line falls back to another layout
-    when it is too wide.
+    A stacked fraction: its numerator centred over its denominator, the bar on
+    the maths axis of the text beside it. Each operand is a ``value_cell`` of its
+    own, so it can hold another fraction or a matrix. Like ``Matrix``, a
+    ``backColor`` in the tags around it is drawn once, behind the whole fraction.
     """
 
-    def __init__(self, markup: str, style, matrices: dict):
+    def __init__(self, fraction: Fraction, style, open_tags: str, close_tags: str,
+                 matrices: dict, level: int = 0):
+        super().__init__()
+        background = _BACK_COLOR.search(open_tags)
+        self.background = background.group(1) if background else None
+        open_tags = _BACK_COLOR.sub("", open_tags)
+        scale = FRACTION_SCALE[min(level, len(FRACTION_SCALE) - 1)]
+        operand_style = _scaled(_flat(style, f"@frac{level}"), scale)
+        self.numerator = value_cell(f"{open_tags}{fraction.numerator}{close_tags}", operand_style,
+                                    matrices, level + 1)
+        self.denominator = value_cell(f"{open_tags}{fraction.denominator}{close_tags}", operand_style,
+                                      matrices, level + 1)
+        self.color = style.textColor
+        size = style.fontSize
+        self.size = size
+        self.bar = max(0.5, size * 0.055)
+        self.gap = size * 0.08  # between the bar and each operand's box
+        self.overhang = size * 0.12  # the bar past the wider operand
+
+    def wrap(self, avail_width, avail_height):
+        self._num = _measure(self.numerator)
+        self._den = _measure(self.denominator)
+        self.width = max(self._num[0], self._den[0]) + 2 * self.overhang
+        self.height = self._num[1] + self._den[1] + 2 * self.gap + self.bar
+        self.axis = self._den[1] + self.gap + self.bar / 2
+        return self.width, self.height
+
+    def draw(self):
+        canvas = self.canv
+        if self.background is not None:
+            canvas.saveState()
+            canvas.setFillColor(HexColor(self.background))
+            canvas.roundRect(0, 0, self.width, self.height, 3, stroke=0, fill=1)
+            canvas.restoreState()
+        (nw, nh), (dw, dh) = self._num, self._den
+        # Numerator first, so text copied from the PDF reads top to bottom.
+        self.numerator.drawOn(canvas, (self.width - nw) / 2, self.height - nh)
+        self.denominator.drawOn(canvas, (self.width - dw) / 2, 0)
+        canvas.saveState()
+        canvas.setStrokeColor(self.color)
+        canvas.setLineWidth(self.bar)
+        canvas.line(self.overhang * 0.5, self.axis, self.width - self.overhang * 0.5, self.axis)
+        canvas.restoreState()
+
+
+class Bracket(Flowable):
+    """A ``(`` or ``)`` drawn as a curve, stretched to the fraction it encloses."""
+
+    def __init__(self, char: str, style, open_tags: str = ""):
+        super().__init__()
+        self.char = char
+        color = re.search(r'color="([^"]*)"', _BACK_COLOR.sub("", open_tags))
+        self.color = HexColor(color.group(1)) if color else style.textColor
+        self.size = style.fontSize
+        self.above = self.below = 0.0  # extent from the axis, set by ``MathRow``
+
+    def wrap(self, avail_width, avail_height):
+        self.width = self.size * 0.42
+        self.height = self.above + self.below
+        self.axis = self.below
+        return self.width, self.height
+
+    def draw(self):
+        canvas = self.canv
+        w, h = self.width, self.height
+        inner, outer = (w * 0.85, w * 0.2) if self.char == "(" else (w * 0.15, w * 0.8)
+        canvas.saveState()
+        canvas.setStrokeColor(self.color)
+        canvas.setLineWidth(max(0.5, self.size * 0.065))
+        path = canvas.beginPath()
+        path.moveTo(inner, h)
+        path.curveTo(outer, h * 0.78, outer, h * 0.22, inner, 0)
+        canvas.drawPath(path, stroke=1, fill=0)
+        canvas.restoreState()
+
+
+def _measure(part: Flowable) -> tuple[float, float]:
+    if isinstance(part, Paragraph):
+        width = natural_width(part)
+        _, height = part.wrap(width + 0.01, 1e6)
+        return width, height
+    return part.wrap(1e6, 1e6)
+
+
+class MathRow(Flowable):
+    """
+    Value markup that contains matrices or fractions: its text pieces and
+    ``Matrix`` / ``FractionFlowable`` pieces side by side on one row, each piece
+    on the row's maths axis. Brackets around a fraction are stretched to its
+    height. It never wraps; like a paragraph it reports its line widths (one
+    line), so ``natural_width`` and ``fits_width`` measure it and a calc line
+    falls back to another layout when it is too wide.
+
+    At the top ``level`` the row is padded so that its middle is where the middle
+    of a plain line of text would be, so a table cell centred on it (the target
+    and ``=``) sits on its axis.
+    """
+
+    def __init__(self, markup: str, style, matrices: dict, level: int = 0):
         super().__init__()
         self.style = style
+        self.level = level
         text_style = _flat(style, "@row")
         self.parts: list[Flowable] = []
-        for piece in matrix_segments(markup):
+        pieces = matrix_segments(markup, brackets=has_fraction(markup, matrices))
+        tall = _tall_brackets(pieces, matrices)
+        stretched = {i for pair in tall.items() for i in pair}
+        for idx, piece in enumerate(pieces):
             if piece[0] == "text":
                 # A paragraph drops the spaces at its ends; keep the ones that
                 # separate this piece from a matrix (`` = ``, `` @ ``).
                 text = re.sub(r"^((?:<[^>]+>)*) ", rf"\1{NBSP}", piece[1])
                 text = re.sub(r" ((?:<[^>]+>)*)$", rf"{NBSP}\1", text)
                 self.parts.append(Paragraph(text, text_style))
+            elif piece[0] == "bracket":
+                _, char, open_tags, close_tags = piece
+                if idx in stretched:
+                    self.parts.append(Bracket(char, style, open_tags))
+                else:
+                    self.parts.append(Paragraph(f"{open_tags}{char}{close_tags}", text_style))
             else:
                 _, key, open_tags, close_tags = piece
-                self.parts.append(Matrix(matrices[key], style, open_tags, close_tags))
+                value = matrices[key]
+                if isinstance(value, Fraction):
+                    self.parts.append(FractionFlowable(value, style, open_tags, close_tags, matrices, level))
+                else:
+                    self.parts.append(Matrix(value, style, open_tags, close_tags))
+        self.pairs = tall  # opening index -> closing index
+        reference = Paragraph("x", text_style)
+        reference.wrap(1e6, 1e6)
+        # How far the middle of a line of text is above its maths axis.
+        self._text_offset = reference.height / 2 - text_axis(reference)
         self._sizes: list[tuple[float, float]] = []
 
     def wrap(self, avail_width, avail_height):
-        self._sizes = []
-        for part in self.parts:
-            if isinstance(part, Paragraph):
-                width = natural_width(part)
-                _, height = part.wrap(width + 0.01, 1e6)
-            else:
-                width, height = part.wrap(1e6, 1e6)
-            self._sizes.append((width, height))
+        brackets = {i for pair in self.pairs.items() for i in pair}
+        self._sizes = [(0.0, 0.0)] * len(self.parts)
+        for idx, part in enumerate(self.parts):
+            if idx not in brackets:
+                self._sizes[idx] = _measure(part)
+        # Each pair of tall brackets reaches past the tallest piece between them;
+        # inner pairs close first, so an outer pair reaches past them too.
+        pad = self.style.fontSize * 0.03
+        for open_idx, close_idx in sorted(self.pairs.items(), key=lambda pair: pair[1]):
+            inside = range(open_idx + 1, close_idx)
+            above = max((self._sizes[i][1] - axis_of(self.parts[i]) for i in inside), default=0.0)
+            below = max((axis_of(self.parts[i]) for i in inside), default=0.0)
+            for i in (open_idx, close_idx):
+                self.parts[i].above, self.parts[i].below = above + pad, below + pad
+                self._sizes[i] = self.parts[i].wrap(1e6, 1e6)
+        axes = [axis_of(part) for part in self.parts]
+        below = max(axes, default=0.0)
+        above = max((h - a for (_, h), a in zip(self._sizes, axes)), default=0.0)
+        self._offset = 0.0
+        if self.level == 0:
+            offset = self._text_offset
+            half = max(above - offset, below + offset)
+            self._offset = half - offset - below  # lifts the content to centre it
+            self.height = 2 * half
+        else:
+            self.height = above + below
+        self.axis = below + self._offset
         self.width = sum(w for w, _ in self._sizes)
-        self.height = max((h for _, h in self._sizes), default=0.0)
         return self.width, self.height
 
     def getActualLineWidths0(self) -> list[float]:
@@ -869,13 +1079,30 @@ class MathRow(Flowable):
 
     def draw(self):
         x = 0.0
-        for part, (width, height) in zip(self.parts, self._sizes):
-            part.drawOn(self.canv, x, (self.height - height) / 2)
+        for part, (width, _) in zip(self.parts, self._sizes):
+            part.drawOn(self.canv, x, self.axis - axis_of(part))
             x += width
 
 
-def value_cell(markup: str, style, matrices: dict | None = None) -> Flowable:
-    """A ``Paragraph`` for ``markup``, or a ``MathRow`` when it holds a matrix."""
+def _tall_brackets(pieces: list, matrices: dict) -> dict[int, int]:
+    """Matched bracket pieces (opening index -> closing index) that enclose a fraction."""
+    pairs: dict[int, int] = {}
+    stack: list[int] = []
+    for idx, piece in enumerate(pieces):
+        if piece[0] != "bracket":
+            continue
+        if piece[1] == "(":
+            stack.append(idx)
+        elif stack:
+            open_idx = stack.pop()
+            if any(p[0] == "matrix" and isinstance(matrices[p[1]], Fraction)
+                   for p in pieces[open_idx + 1:idx]):
+                pairs[open_idx] = idx
+    return pairs
+
+
+def value_cell(markup: str, style, matrices: dict | None = None, level: int = 0) -> Flowable:
+    """A ``Paragraph`` for ``markup``, or a ``MathRow`` when it holds a matrix or fraction."""
     if matrices and has_matrix(markup):
-        return MathRow(markup, style, matrices)
+        return MathRow(markup, style, matrices, level)
     return Paragraph(markup, style)
