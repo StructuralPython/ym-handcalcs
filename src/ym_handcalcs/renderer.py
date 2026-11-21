@@ -20,12 +20,16 @@ from xml.sax.saxutils import escape
 from reportlab.lib.styles import ParagraphStyle, StyleSheet1
 from reportlab.platypus import Flowable, HRFlowable, KeepTogether, PageBreak, Paragraph, Spacer
 
+from handcalcs.parsing.operator_nodes import DivOp, FloorOp
 from handcalcs.renderers.base import (
+    OP_PRECEDENCE,
     PAGE_BREAK,
     BaseRenderContext,
     BaseRenderer,
     RenderContext,
     elide_matrix,
+    infix_binop,
+    operand_precedence,
     render_condition,
 )
 
@@ -33,7 +37,7 @@ from .flowables import (
     BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid, box_marks, inline_matrices,
 )
 from .fonts import Fonts, missing_fonts, register_families
-from .markers import MATRIX_CLOSE, MATRIX_OPEN, CalcComponents, Grid, Tagged
+from .markers import MATRIX_CLOSE, MATRIX_OPEN, CalcComponents, Fraction, Grid, Tagged
 from .prose import CommentProseMarkup, ProseMarkup, prose_markup
 from .styles import Metrics, Palette, build_stylesheet
 from .symbols import register_symbol_rules
@@ -47,6 +51,7 @@ from handcalcs.parsing.block_nodes import CommentsBlock, ElseBlock, ForBlock, If
 BRC = BaseRenderContext
 
 HEADING_MODES = ("calc", "document", "flat")
+FRACTIONS = ("stacked", "inline")
 
 class _Placed:
     """A flowable that a nested ``join_items`` call has already placed at its depth."""
@@ -92,6 +97,7 @@ class ReportLabRenderer(BaseRenderer):
         headings: str = "calc",
         heading_styles: Optional[dict[int, ParagraphStyle]] = None,
         outline_level: Optional[int] = None,
+        fractions: str = "stacked",
     ) -> None:
         """
         ``theme_color`` (a dark ``'#RRGGBB'``) derives the whole palette with
@@ -109,8 +115,18 @@ class ReportLabRenderer(BaseRenderer):
         ``outline_level`` is the host outline level of a level-1 calc heading. When
         given, each heading also carries ``ym_outline = (title, level)`` for the
         host's bookmarks (ymprint).
+
+        ``fractions="stacked"`` (the default) draws a division as a fraction,
+        its numerator over its denominator; ``"inline"`` writes ``a / b``.
+        Divisions in exponents are always inline, and a line too wide for its
+        stacked fractions falls back to writing them inline.
         """
         super().__init__()
+        if fractions not in FRACTIONS:
+            raise ValueError(f"fractions must be one of {', '.join(FRACTIONS)}, got {fractions!r}")
+        self.fractions = fractions
+        # How many exponents the node being rendered is inside.
+        self.exponent_depth = 0
         if headings not in HEADING_MODES:
             raise ValueError(f"headings must be one of {', '.join(HEADING_MODES)}, got {headings!r}")
         if palette is not None and theme_color is not None:
@@ -458,6 +474,33 @@ def render_matrix(renderer: RLR, node: Matrix, base_context: BRC) -> str:
     rows = elide_matrix(rows, base_context, "⋯", "⋮")
     key = str(next(_MATRICES))
     renderer.matrices[key] = [[str(cell) for cell in row] for row in rows]
+    return f"{MATRIX_OPEN}{key}{MATRIX_CLOSE}"
+
+
+@RLR.register("div_op")
+@RLR.register("floor_op")
+def render_division(renderer: RLR, node, base_context: BRC):
+    """
+    A division, as a token for a stacked ``Fraction`` (see ``flowables.MathRow``);
+    a floor division (``//``) is the same between floor brackets. The bar groups
+    each operand, so the brackets an inline division needs are only kept for
+    writing it inline. In an exponent, or with ``fractions="inline"``, it is
+    ``a / b`` (or ``a // b``).
+    """
+    if renderer.fractions != "stacked" or renderer.exponent_depth:
+        return f"{node.pre}{infix_binop(node, renderer, True, base_context)}{node.post}"
+    context = base_context.current
+    precedence = OP_PRECEDENCE[type(node)]
+    key = str(next(_MATRICES))
+    renderer.matrices[key] = Fraction(
+        renderer.render_node(node.left, base_context),
+        renderer.render_node(node.right, base_context),
+        numerator_brackets=operand_precedence(node.left, base_context) < precedence,
+        denominator_brackets=operand_precedence(node.right, base_context) <= precedence,
+        lpar=context.lpar,
+        rpar=context.rpar,
+        floor=isinstance(node, FloorOp),
+    )
     return f"{MATRIX_OPEN}{key}{MATRIX_CLOSE}"
 
 

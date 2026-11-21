@@ -11,7 +11,7 @@ testing = pytest.importorskip("handcalcs.testing", reason="handcalcs has no feat
 from reportlab.platypus import Paragraph
 
 from ym_handcalcs import ReportLabRenderer
-from ym_handcalcs.flowables import BreakingParagraph, CalcLine, Chip, ParamGrid
+from ym_handcalcs.flowables import BreakingParagraph, CalcLine, Chip, ParamGrid, inline_matrices
 from ym_handcalcs.renderer import plain_text
 
 from test_reportlab_renderer import leaves
@@ -22,7 +22,9 @@ def story_text(rendered: dict) -> str:
     texts = []
     for _, flowable in leaves(rendered["story"]):
         if isinstance(flowable, CalcLine):
-            texts.extend([*flowable.columns, flowable.comment or ""])
+            # Fractions and matrices are tokens in the markup: write them out.
+            columns = [inline_matrices(col, flowable.matrices or {}) for col in flowable.columns]
+            texts.extend([*columns, flowable.comment or ""])
         elif isinstance(flowable, ParamGrid):
             texts.extend(part for cell in flowable.cells for part in cell if part)
         elif isinstance(flowable, BreakingParagraph):
