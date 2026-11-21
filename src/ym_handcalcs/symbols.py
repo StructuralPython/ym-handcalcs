@@ -132,7 +132,12 @@ def render_pow_op(renderer, node: HcBinOp, base_context: BRC) -> str:
         or base.lstrip().startswith(("-", "+"))
     ):
         base = f"{context.lpar}{base}{context.rpar}"
-    exponent = unbreakable(renderer.render_node(node.right, base_context))
+    # A division in an exponent stays inline (``stacks``).
+    renderer.exponent_depth += 1
+    try:
+        exponent = unbreakable(renderer.render_node(node.right, base_context))
+    finally:
+        renderer.exponent_depth -= 1
     return f"{base}<sup>{exponent}</sup>"
 
 

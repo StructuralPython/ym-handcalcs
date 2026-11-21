@@ -19,6 +19,7 @@ The DejaVu fonts are ymprint's bundled faces, registered in ``conftest.py``.
 import io
 import os
 import pathlib
+import re
 
 import pytest
 
@@ -37,6 +38,8 @@ from ym_handcalcs import (
 )
 from ym_handcalcs.breaking import NBSP, elide_collections, ranked_breaks, with_breaks
 from ym_handcalcs.flowables import BreakingParagraph, CalcBlock, CalcLine, Chip, DepthGuides, ParamGrid
+from ym_handcalcs.flowables import inline_matrices
+from ym_handcalcs.markers import MATRIX_CLOSE, MATRIX_OPEN, Fraction
 
 GOLDEN_DIR = pathlib.Path(__file__).parent / "golden"
 UPDATE_GOLDEN = os.environ.get("HANDCALCS_UPDATE_GOLDEN") == "1"
@@ -72,13 +75,30 @@ def leaves(story: list, depth: int = 0):
             yield depth, flowable
 
 
+def spell(markup: str, matrices: dict | None) -> str:
+    """
+    ``markup`` with its tokens spelled out: a fraction as ``frac(num, den)`` (or
+    ``floor(...)``), a matrix inline. Token ids depend on test order, so goldens
+    never show them.
+    """
+    def token(match: re.Match) -> str:
+        value = (matrices or {})[match.group(1)]
+        if isinstance(value, Fraction):
+            name = "floor" if value.floor else "frac"
+            return f"{name}({spell(value.numerator, matrices)}, {spell(value.denominator, matrices)})"
+        return inline_matrices(match.group(0), matrices)
+
+    return re.sub(rf"{MATRIX_OPEN}(\d+){MATRIX_CLOSE}", token, markup)
+
+
 def describe(depth: int, flowable: Flowable) -> str:
     pad = "  " * depth
     clean = lambda text: str(text).replace(NBSP, "~")
     if isinstance(flowable, CalcLine):
         comment = f" | {clean(flowable.comment)}" if flowable.comment else ""
         grid = " [-m]" if flowable.forced_grid else ""
-        return f"{pad}CalcLine{grid}: {' = '.join(map(clean, flowable.columns))}{comment}"
+        columns = (clean(spell(col, flowable.matrices)) for col in flowable.columns)
+        return f"{pad}CalcLine{grid}: {' = '.join(columns)}{comment}"
     if isinstance(flowable, ParamGrid):
         cells = "; ".join(" ".join(clean(part) for part in cell if part) for cell in flowable.cells)
         return f"{pad}ParamGrid(cols={flowable.cols}): {cells}"
@@ -867,7 +887,8 @@ def test_decorator_destination_writes_a_pdf(tmp_path):
         return M
 
     assert beam(5, 6) == (22.5, tmp_path / "beam.pdf")
-    assert "M = w · L2 / 8" in " ".join(pdf_pages(tmp_path / "beam.pdf")[0].split())
+    # The stacked fraction reads numerator, then denominator.
+    assert "M = w · L2 8 = 5 · 62 8 = 22.5" in " ".join(pdf_pages(tmp_path / "beam.pdf")[0].split())
 
 
 # -- showing and hiding (handcalcs' render_node gate) ------------------------------
@@ -998,3 +1019,143 @@ def test_matrix_segments_rebalance_the_tags_around_a_matrix():
 def test_matrices_are_written_inline_where_they_cannot_be_drawn():
     token = f"{MATRIX_OPEN}1{MATRIX_CLOSE}"
     assert inline_matrices(f"A = {token}", {"1": [["1", "2"], ["3", "4"]]}) == "A = [[1, 2], [3, 4]]"
+
+
+# -- fractions --------------------------------------------------------------------
+
+from ym_handcalcs.flowables import Bracket, FractionFlowable, inline_fractions, text_axis
+
+
+def calc_lines(story: list) -> list[CalcLine]:
+    return [flowable for _, flowable in leaves(story) if isinstance(flowable, CalcLine)]
+
+
+def last_line(source: str, **kwargs) -> CalcLine:
+    return calc_lines(render(source, **kwargs)["story"])[-1]
+
+
+def spelled(line: CalcLine) -> list[str]:
+    return [spell(col, line.matrices) for col in line.columns]
+
+
+def value_row(line: CalcLine, width: float = 504) -> MathRow:
+    _, cells, _ = line.choose(width, 40)
+    return next(row[2] for row in cells if isinstance(row[2], MathRow))
+
+
+def test_a_division_is_a_stacked_fraction():
+    line = last_line("a = 3\nb = 4\nx = (a + b) / 2\n")
+    # The bar groups the numerator: no brackets around the sum.
+    assert spelled(line) == ["x", "frac(a + b, 2)", "frac(3 + 4, 2)", "3.5"]
+
+
+def test_fractions_inline_writes_a_slash():
+    line = last_line("a = 3\nb = 4\nx = (a + b) / 2\n", fractions="inline")
+    assert line.columns[:2] == ["x", "(a + b) / 2"]
+
+
+def test_fractions_must_be_stacked_or_inline():
+    with pytest.raises(ValueError, match="fractions must be one of stacked, inline"):
+        ReportLabRenderer(fractions="tall")
+
+
+def test_a_division_in_an_exponent_stays_inline():
+    line = last_line("a = 3\nb = 4\nw = 2 ** (a / b)\n")
+    assert spelled(line)[1] == "2<sup>a~/~b</sup>".replace("~", NBSP)
+
+
+def test_nested_fractions():
+    line = last_line("a = 3\nb = 4\nc = 2\ny = a / (b / c + 1)\n")
+    assert spelled(line)[1] == "frac(a, frac(b, c) + 1)"
+
+
+def test_floor_division_is_a_fraction_between_floor_brackets():
+    line = last_line("a = 7\nb = 2\nn = a // b\n")
+    assert spelled(line)[1] == "floor(a, b)"
+    row = value_row(line)
+    texts = [part.text if isinstance(part, Paragraph) else type(part).__name__ for part in row.parts]
+    assert texts[:3] == ["⌊", "FractionFlowable", "⌋"]
+    assert inline_fractions(line.columns[1], line.matrices) == "a // b"
+
+
+def test_fractions_are_written_inline_with_the_brackets_they_need():
+    fraction = Fraction("a + b", "c · d", numerator_brackets=True, denominator_brackets=True)
+    token = f"{MATRIX_OPEN}1{MATRIX_CLOSE}"
+    assert inline_matrices(f"x = {token}", {"1": fraction}) == "x = (a + b) / (c · d)"
+
+
+def test_brackets_around_a_fraction_are_stretched():
+    line = last_line("a = 3\nb = 5\nc = 2\nz = (a / b) ** 2 + c * (1 + a / c)\n")
+    row = value_row(line)
+    brackets = [part for part in row.parts if isinstance(part, Bracket)]
+    # Two pairs per expression (the line layout holds both the symbolic and numeric one).
+    assert [b.char for b in brackets] == ["(", ")"] * (len(brackets) // 2) and len(brackets) in (4, 8)
+    row.wrap(1e6, 1e6)
+    fraction = next(part for part in row.parts if isinstance(part, FractionFlowable))
+    assert all(b.height > fraction.height for b in brackets)
+
+
+def test_brackets_without_a_fraction_inside_stay_text():
+    line = last_line("from math import sqrt\nf_c = 35\nv = sqrt(f_c) / 6\n")
+    row = value_row(line)
+    assert not [part for part in row.parts if isinstance(part, Bracket)]
+
+
+def test_parts_of_a_row_share_the_maths_axis():
+    line = last_line("P = 12.5\nA = 4\nsigma = P / A\n")
+    row = value_row(line)
+    row.wrap(1e6, 1e6)
+    fraction = next(part for part in row.parts if isinstance(part, FractionFlowable))
+    text = next(part for part in row.parts if isinstance(part, Paragraph))
+    # The bar sits on the axis of the text beside it ...
+    y = lambda part: row.axis - (part.axis if part is fraction else text_axis(part))
+    assert y(fraction) + fraction.axis == pytest.approx(y(text) + text_axis(text))
+    # ... and the row is centred so a table cell centred on it (the target) is too.
+    reference = Paragraph("x", text.style)
+    reference.wrap(1e6, 1e6)
+    assert row.height / 2 - row.axis == pytest.approx(reference.height / 2 - text_axis(reference))
+
+
+def test_a_line_too_wide_for_stacked_fractions_writes_them_inline():
+    terms = " + ".join(["(a + b) / (c + 1)"] * 16)
+    line = last_line(f"a = 3\nb = 5\nc = 2\nL = {terms}\n")
+    build([line], 252)
+    assert ":inline" in line.layout
+
+
+def test_headers_write_fractions_inline():
+    story = render("a = 3\nb = 4\nif a / b < 1:\n    c = 1\n")["story"]
+    header = next(f for _, f in leaves(story) if isinstance(f, BreakingParagraph))
+    assert "a / b" in header.markup and MATRIX_OPEN not in header.markup
+
+
+def test_a_boxed_result_beside_fractions_is_boxed(monkeypatch):
+    from ym_handcalcs import flowables
+
+    story = render("a = 3\nb = 4\nx = a / b  # hc: --boxed\n")["story"]
+    labels = []
+    draw_box = flowables.draw_box
+    monkeypatch.setattr(flowables, "draw_box", lambda c, k, label: (labels.append(label), draw_box(c, k, label)))
+    build(story)
+    assert [label.split()[0] for label in labels] == ["open", "close"]
+
+
+@pytest.mark.parametrize("width", [504, 252])
+def test_fractions_build_into_a_pdf(width, tmp_path):
+    source = "a = 3\nb = 5\nc = 2\ny = a / (b / c + 1)\nz = (a / b) ** 2\nn = a // c\n"
+    result = render(source)
+    text = " ".join(" ".join(pdf_pages(build_pdf(result, tmp_path / "f.pdf", frame_width=width))).split())
+    assert "0.85714" in text and "0.36" in text
+
+
+def test_only_the_values_too_wide_for_stacked_fractions_write_them_inline():
+    source = (
+        "from math import sqrt\na = 5.25\nb = -10.4231\nc = 2\n"
+        "x = (-b + sqrt(b**2 - 4 * a * c)) / (2 * a)\n"
+    )
+    line = last_line(source)
+    build([line], 200)
+    assert ":mixed" in line.layout
+    _, cells, _ = line.choose(200, line.target_width())
+    symbolic, numeric = cells[0][2], cells[1][2]
+    assert isinstance(symbolic, MathRow) and isinstance(numeric, Paragraph)
