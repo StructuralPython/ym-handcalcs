@@ -13,6 +13,7 @@ renders it with handcalcs.
       base_size: 9.5
       namespace: beam
       headings: document    # or calc, or flat
+      fractions: stacked    # or inline
 
     _hc_column:
       path: column_calc     # a .py `_data` source, or an absolute path to a .py file
@@ -23,6 +24,8 @@ With ``namespace``, its results go in ``_vars[namespace]`` instead, leaving the
 top level of ``_vars`` untouched. With ``path`` instead of ``source``, the source
 is read from a ``.py`` file: the name of a ``_data`` source, or an absolute path.
 ``headings`` sets how heading comments (``## ...``) render; see ``document_style``.
+``fractions`` sets whether divisions are drawn as stacked fractions (the default)
+or written inline, ``a / b``.
 ymprint registers this block itself when ym_handcalcs is installed
 (``pip install ymprint[hc]``).
 """
@@ -36,14 +39,14 @@ from handcalcs import HandCalcs, get_option
 from handcalcs.parsing import line_values
 
 from .fonts import Fonts, family_from_name, missing_fonts
-from .renderer import HEADING_MODES, ReportLabRenderer
+from .renderer import FRACTIONS, HEADING_MODES, ReportLabRenderer
 
 # ymprint's text styles define h1..h6.
 MAX_HEADING_LEVEL = 6
 
 BLOCK_CODE = "_hc"
 SOURCE_OPTIONS = {"source", "path"}
-OPTIONS = SOURCE_OPTIONS | {"theme_color", "base_size", "namespace", "headings"}
+OPTIONS = SOURCE_OPTIONS | {"theme_color", "base_size", "namespace", "headings", "fractions"}
 
 
 def block_options(block_key: str, block_value: Any) -> dict:
@@ -70,6 +73,9 @@ def block_options(block_key: str, block_value: Any) -> dict:
     headings = block_value.get("headings")
     if headings is not None and headings not in HEADING_MODES:
         raise ValueError(f"{block_key}: 'headings' must be one of {', '.join(HEADING_MODES)}, got {headings!r}.")
+    fractions = block_value.get("fractions")
+    if fractions is not None and fractions not in FRACTIONS:
+        raise ValueError(f"{block_key}: 'fractions' must be one of {', '.join(FRACTIONS)}, got {fractions!r}.")
     path = block_value.get("path")
     if "path" in block_value and not (isinstance(path, str) and path.strip()):
         raise ValueError(f"{block_key}: 'path' must be a data source name or an absolute path, got {path!r}.")
@@ -232,6 +238,7 @@ def convert_hc_block(block_key: str, block_value: Any, context: dict) -> list:
         context["vars"][namespace] = namespace_results(source, context["vars"], run_vars)
     renderer = ReportLabRenderer(
         theme_color=options.get("theme_color"),
+        fractions=options.get("fractions", "stacked"),
         **document_style(options, context),
     )
     result = HandCalcs(renderer=renderer).render_run(source, run_vars, values)

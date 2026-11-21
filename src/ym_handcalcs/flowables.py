@@ -499,9 +499,18 @@ class CalcLine(Flowable):
         elided = [elide_collections(col) for col in self.columns]
         if elided != self.columns:
             column_sets.append((":elided", elided))
-        # Stacked fractions never wrap: a line too wide for them writes them inline.
+        # Stacked fractions never wrap: a value too wide for them writes them inline.
+        # First only in the values that do not fit on a row of their own (often the
+        # numeric substitution), then everywhere.
         if any(has_fraction(col, self.matrices) for col in self.columns):
             flat = [inline_fractions(col, self.matrices) for col in self.columns]
+            inner = avail_width - id_width - self.eq_width() - 2 * self.pad
+            mixed = [
+                col if idx == 0 or self._stacked_fits(col, inner) else flat[idx]
+                for idx, col in enumerate(self.columns)
+            ]
+            if mixed != self.columns and mixed != flat:
+                column_sets.append((":mixed", mixed))
             column_sets.append((":inline", flat))
             flat_elided = [elide_collections(col) for col in flat]
             if flat_elided != flat:
@@ -520,6 +529,10 @@ class CalcLine(Flowable):
                             avail_width, id_width, c, lambda m: with_breaks(m, r), k, s
                         ),
                     )
+
+    def _stacked_fits(self, markup: str, inner: float) -> bool:
+        """True if ``markup`` with its fractions stacked fits in a value cell ``inner`` wide."""
+        return natural_width(value_cell(markup, self.styles["value"], self.matrices)) <= inner + 0.01
 
     def choose(self, avail_width: float, id_width: float):
         """``(layout, cells, commands)`` for this frame width and target column width."""
@@ -780,7 +793,7 @@ def inline_fraction(fraction: Fraction, matrices: dict) -> str:
         numerator = f"{fraction.lpar}{numerator}{fraction.rpar}"
     if fraction.denominator_brackets:
         denominator = f"{fraction.lpar}{denominator}{fraction.rpar}"
-    return f"{numerator} / {denominator}"
+    return f"{numerator} {'//' if fraction.floor else '/'} {denominator}"
 
 
 def inline_fractions(markup: str, matrices: dict) -> str:
@@ -1016,7 +1029,9 @@ class MathRow(Flowable):
         pieces = matrix_segments(markup, brackets=has_fraction(markup, matrices))
         tall = _tall_brackets(pieces, matrices)
         stretched = {i for pair in tall.items() for i in pair}
+        part_of: dict[int, int] = {}  # piece index -> part index
         for idx, piece in enumerate(pieces):
+            part_of[idx] = len(self.parts)
             if piece[0] == "text":
                 # A paragraph drops the spaces at its ends; keep the ones that
                 # separate this piece from a matrix (`` = ``, `` @ ``).
@@ -1033,10 +1048,18 @@ class MathRow(Flowable):
                 _, key, open_tags, close_tags = piece
                 value = matrices[key]
                 if isinstance(value, Fraction):
-                    self.parts.append(FractionFlowable(value, style, open_tags, close_tags, matrices, level))
+                    fraction = FractionFlowable(value, style, open_tags, close_tags, matrices, level)
+                    if value.floor:
+                        self.parts.extend([
+                            Paragraph(f"{open_tags}⌊{close_tags}", text_style), fraction,
+                            Paragraph(f"{open_tags}⌋{close_tags}", text_style),
+                        ])
+                    else:
+                        self.parts.append(fraction)
                 else:
                     self.parts.append(Matrix(value, style, open_tags, close_tags))
-        self.pairs = tall  # opening index -> closing index
+        # Stretched bracket parts: opening part index -> closing part index.
+        self.pairs = {part_of[o]: part_of[c] for o, c in tall.items()}
         reference = Paragraph("x", text_style)
         reference.wrap(1e6, 1e6)
         # How far the middle of a line of text is above its maths axis.

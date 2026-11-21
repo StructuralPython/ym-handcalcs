@@ -20,7 +20,7 @@ from xml.sax.saxutils import escape
 from reportlab.lib.styles import ParagraphStyle, StyleSheet1
 from reportlab.platypus import Flowable, HRFlowable, KeepTogether, PageBreak, Paragraph, Spacer
 
-from handcalcs.parsing.operator_nodes import DivOp
+from handcalcs.parsing.operator_nodes import DivOp, FloorOp
 from handcalcs.renderers.base import (
     OP_PRECEDENCE,
     PAGE_BREAK,
@@ -478,17 +478,19 @@ def render_matrix(renderer: RLR, node: Matrix, base_context: BRC) -> str:
 
 
 @RLR.register("div_op")
-def render_div_op(renderer: RLR, node: DivOp, base_context: BRC):
+@RLR.register("floor_op")
+def render_division(renderer: RLR, node, base_context: BRC):
     """
-    A division, as a token for a stacked ``Fraction`` (see ``flowables.MathRow``).
-    The bar groups each operand, so the brackets an inline division needs are
-    only kept for writing it inline. In an exponent, or with
-    ``fractions="inline"``, it is ``a / b``.
+    A division, as a token for a stacked ``Fraction`` (see ``flowables.MathRow``);
+    a floor division (``//``) is the same between floor brackets. The bar groups
+    each operand, so the brackets an inline division needs are only kept for
+    writing it inline. In an exponent, or with ``fractions="inline"``, it is
+    ``a / b`` (or ``a // b``).
     """
     if renderer.fractions != "stacked" or renderer.exponent_depth:
         return f"{node.pre}{infix_binop(node, renderer, True, base_context)}{node.post}"
     context = base_context.current
-    precedence = OP_PRECEDENCE[DivOp]
+    precedence = OP_PRECEDENCE[type(node)]
     key = str(next(_MATRICES))
     renderer.matrices[key] = Fraction(
         renderer.render_node(node.left, base_context),
@@ -497,6 +499,7 @@ def render_div_op(renderer: RLR, node: DivOp, base_context: BRC):
         denominator_brackets=operand_precedence(node.right, base_context) <= precedence,
         lpar=context.lpar,
         rpar=context.rpar,
+        floor=isinstance(node, FloorOp),
     )
     return f"{MATRIX_OPEN}{key}{MATRIX_CLOSE}"
 

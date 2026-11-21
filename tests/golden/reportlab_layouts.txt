@@ -2,8 +2,8 @@
 line                     a
 line                     b
 line                     c
-grid:break4              x<sub>1</sub>
-grid:break4              x<sub>2</sub>
+grid:mixed:break4        x<sub>1</sub>
+grid:mixed:break4        x<sub>2</sub>
 line                     ω<sub>2</sub>
 line                     L
 line                     E
@@ -11,8 +11,8 @@ grid                     I<sub>y</sub>
 line                     G
 line                     J
 line                     C<sub>w</sub>
-shrink:grid:break5       M<sub>u</sub>
-shrink:grid:break5       M<sub>u</sub>
+shrink:grid:mixed:break5 M<sub>u</sub>
+shrink:grid:mixed:break5 M<sub>u</sub>
 line                     b<sub>w</sub>
 line                     h<sub>w</sub>
 line                     t<sub>f</sub>
@@ -45,8 +45,8 @@ line                     a<sub>tuple</sub>
 line                     a
 line                     b
 line                     c
-grid                     x<sub>1</sub>
-grid                     x<sub>2</sub>
+line                     x<sub>1</sub>
+line                     x<sub>2</sub>
 line                     ω<sub>2</sub>
 line                     L
 line                     E
@@ -54,8 +54,8 @@ line                     I<sub>y</sub>
 line                     G
 line                     J
 line                     C<sub>w</sub>
-grid:break2              M<sub>u</sub>
-grid:break2              M<sub>u</sub>
+grid:mixed:break2        M<sub>u</sub>
+grid:mixed:break2        M<sub>u</sub>
 line                     b<sub>w</sub>
 line                     h<sub>w</sub>
 line                     t<sub>f</sub>

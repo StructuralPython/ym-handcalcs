@@ -78,3 +78,5 @@ class Fraction:
     denominator_brackets: bool = False
     lpar: str = "("
     rpar: str = ")"
+    # A floor division (``//``): drawn between floor brackets, ``⌊a/b⌋``.
+    floor: bool = False

@@ -58,6 +58,7 @@ The value is either the source as a string, or a mapping:
 | `base_size` | the body text size of the active text style | Font size, in points, that every calc style scales from. |
 | `namespace` | none | Put the block's results in `_vars[namespace]` instead of the top level of `_vars`. |
 | `headings` | `document` | How `## ...` heading comments render: `document`, `calc` or `flat` (see [Headings](#headings)). |
+| `fractions` | `stacked` | `stacked` draws a division as a fraction, its numerator over its denominator; `inline` writes `a / b`. |
 
 With `namespace: beam`, the source can still use everything in `_vars`, but the names it
 assigns go in `_vars["beam"]`, replaced each time the block runs, and later Python code
@@ -122,6 +123,14 @@ and italic faces isn't inherited.
 
 `document` mode and the bookmarks need YMPrint 0.11 or later. With an older YMPrint, the
 calc uses `calc` headings.
+
+### Fractions
+
+Divisions are drawn as stacked fractions, the numerator over the denominator, with
+brackets around a fraction drawn as tall as it. A division in an exponent stays inline
+(`a / b` in the superscript), and a line too wide for its stacked fractions writes them inline and
+wraps as usual. Set `fractions: inline` on a block (or
+`ReportLabRenderer(fractions="inline")`) to write every division as `a / b`.
 
 ## Using the renderer directly
 

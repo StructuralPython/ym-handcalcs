@@ -11,8 +11,8 @@ Spacer
 CalcLine: a = 5.25
 CalcLine: b = -1.04231e+01
 CalcLine: c = 2
-CalcLine: x<sub>1</sub> = (-b + √(b<sup>2</sup> - 4 · a · c)) / (2 · a) = (-(-1.04231e+01) + √((-1.04231e+01)<sup>2</sup> - 4 · 5.25 · 2)) / (2 · 5.25) = 1.7686
-CalcLine: x<sub>2</sub> = (-b - √(b<sup>2</sup> - 4 · a · c)) / (2 · a) = (-(-1.04231e+01) - √((-1.04231e+01)<sup>2</sup> - 4 · 5.25 · 2)) / (2 · 5.25) = 0.21523
+CalcLine: x<sub>1</sub> = frac(-b + √(b<sup>2</sup> - 4 · a · c), 2 · a) = frac(-(-1.04231e+01) + √((-1.04231e+01)<sup>2</sup> - 4 · 5.25 · 2), 2 · 5.25) = 1.7686
+CalcLine: x<sub>2</sub> = frac(-b - √(b<sup>2</sup> - 4 · a · c), 2 · a) = frac(-(-1.04231e+01) - √((-1.04231e+01)<sup>2</sup> - 4 · 5.25 · 2), 2 · 5.25) = 0.21523
 Paragraph[hcComment]: Params grid type 1
 ParamGrid(cols=3): f = 1; g = 2; h = 4
 Paragraph[hcComment]: Params grid type 2 (Comments allowed)
@@ -27,9 +27,9 @@ CalcLine: G = 77e3 | <font color="#637778"><i>(Shear modulus, in MPa)</i></font>
 CalcLine: J = 133e3 | <font color="#637778"><i>(Polar moment of area, in mm^3)</i></font>
 CalcLine: C<sub>w</sub> = 200e9 | <font color="#637778"><i>(Warping constant)</i></font>
 Spacer
-CalcLine [-m]: M<sub>u</sub> = ω<sub>2</sub> · π / L · √(E · I<sub>y</sub> · G · J + (π · E / L)<sup>2</sup> · I<sub>y</sub> · C<sub>w</sub>) = 1 · 3.1416 / 6000 · √(200000 · 1.6e+08 · 77000 · 1.33e+05 + (3.1416 · 200000 / 6000)<sup>2</sup> · 1.6e+08 · 2e+11) = 4.3134e+08 | <font color="#637778"><i>(A long equation)</i></font>
+CalcLine [-m]: M<sub>u</sub> = frac(ω<sub>2</sub> · π, L) · √(E · I<sub>y</sub> · G · J + (frac(π · E, L))<sup>2</sup> · I<sub>y</sub> · C<sub>w</sub>) = frac(1 · 3.1416, 6000) · √(200000 · 1.6e+08 · 77000 · 1.33e+05 + (frac(3.1416 · 200000, 6000))<sup>2</sup> · 1.6e+08 · 2e+11) = 4.3134e+08 | <font color="#637778"><i>(A long equation)</i></font>
 Spacer
-CalcLine: M<sub>u</sub> = ω<sub>2</sub> · π / L · √(E · I<sub>y</sub> · G · J + (π · E / L)<sup>2</sup> · I<sub>y</sub> · C<sub>w</sub>) = 1 · 3.1416 / 6000 · √(200000 · 1.6e+08 · 77000 · 1.33e+05 + (3.1416 · 200000 / 6000)<sup>2</sup> · 1.6e+08 · 2e+11) = 4.3134e+08 | <font color="#637778"><i>(A long equation)</i></font>
+CalcLine: M<sub>u</sub> = frac(ω<sub>2</sub> · π, L) · √(E · I<sub>y</sub> · G · J + (frac(π · E, L))<sup>2</sup> · I<sub>y</sub> · C<sub>w</sub>) = frac(1 · 3.1416, 6000) · √(200000 · 1.6e+08 · 77000 · 1.33e+05 + (frac(3.1416 · 200000, 6000))<sup>2</sup> · 1.6e+08 · 2e+11) = 4.3134e+08 | <font color="#637778"><i>(A long equation)</i></font>
 Paragraph[hcH2]: Steel section class checks
 Rule
 Paragraph[hcComment]: The purpose of this demo is to show nested if/elif/else statements
@@ -48,7 +48,7 @@ CalcLine: vals<sub>y</sub> = [5, 4, 3, 2, 1]
 Spacer
 Header: <font color="#0B5F66">▸</font> <font color="#0B5F66"><b>Iterating over each</b></font> val<sub>x</sub> <font color="#0B5F66"><b>in</b></font> vals<sub>x</sub>:
   Header: <font color="#0B5F66">▸</font> <font color="#0B5F66"><b>Iterating over each</b></font> val<sub>y</sub> <font color="#0B5F66"><b>in</b></font> vals<sub>y</sub>:
-    CalcLine: value<sub>computed</sub> = degrees(atan(val<sub>y</sub> / val<sub>x</sub>)) = degrees(atan(1 / 5)) = 11.31
+    CalcLine: value<sub>computed</sub> = degrees(atan(frac(val<sub>y</sub>, val<sub>x</sub>))) = degrees(atan(frac(1, 5))) = 11.31
     CalcLine: acc.append(value<sub>computed</sub>) = acc.append(11.31)
 CalcLine: acc = [78.69, 75.964, 71.565, …, 30.964, 21.801, 11.31]
 Paragraph[hcH2]: Logical, identity and membership operators
