@@ -198,7 +198,8 @@ class ReportLabRenderer(BaseRenderer):
                 return [_Placed(PageBreak())]
             # A one-shot line-break directive is a bare newline.
             if not item.strip("\n"):
-                return [Spacer(1, self.metrics.base_size * 0.6)]
+                # ``# hc: -b``: one blank line, as in the other renderers.
+                return [Spacer(1, self.metrics.leading)]
             if isinstance(item, Tagged):
                 return self.tagged_flowables(item, depth)
             return [self.line_flowable(item, depth)]
