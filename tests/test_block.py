@@ -95,6 +95,23 @@ def test_a_failing_source_is_a_python_block_error(app, tmp_path):
         app.render({"Calcs": [{"_hc": "x = 1 / 0\n"}]}, tmp_path / "out.pdf")
 
 
+def test_a_function_from_an_earlier_block_shows_its_own_line(app, tmp_path):
+    # The second block calls a function the first defined, and the call fails.
+    document = {
+        "Helpers": [{"_hc": "def half(x):\n    y = 1\n    return x / 0\n"}],
+        "Calcs": [{"_hc": "a = 1\nb = 2\nc = half(a)\n"}],
+    }
+    with pytest.raises(PythonBlockError) as info:
+        app.render(document, tmp_path / "out.pdf")
+    frames = traceback.extract_tb(info.value.__cause__.__traceback__)
+    half = next(frame for frame in frames if frame.name == "half")
+    assert half.lineno == 3
+    assert half.line == "return x / 0"  # the first block's line, not the second's
+    module = next(frame for frame in frames if frame.name == "<module>")
+    assert module.filename != half.filename
+    assert module.line == "c = half(a)"
+
+
 @pytest.mark.parametrize(
     "value, message",
     [

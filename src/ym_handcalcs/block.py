@@ -31,6 +31,8 @@ ymprint registers this block itself when ym_handcalcs is installed
 """
 from __future__ import annotations
 
+import hashlib
+import linecache
 import pathlib
 import symtable
 from typing import Any
@@ -118,10 +120,27 @@ def source_file(block_key: str, path: str, context: dict) -> pathlib.Path:
     return file
 
 
+def inline_filename(block_key: str, source: str) -> str:
+    """A filename of the block's own for its inline source, registered with linecache.
+
+    A traceback through a function this block defines, called from a later block,
+    then shows this block's line (ymprint's error display names the block too).
+    """
+    try:
+        from ymprint.errors import block_filename
+    except ImportError:  # an ymprint without block_filename
+        digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:10]
+        filename = f"<ymprint {block_key} {digest}>"
+        lines = source.splitlines(keepends=True)
+        linecache.cache[filename] = (len(source), None, lines, filename)
+        return filename
+    return block_filename(block_key, source)
+
+
 def block_source(block_key: str, options: dict, context: dict) -> tuple[str, str]:
     """Returns (source, filename): the block's inline source, or the .py file 'path' names."""
     if "path" not in options:
-        return options["source"], "<handcalcs>"
+        return options["source"], inline_filename(block_key, options["source"])
     file = source_file(block_key, options["path"], context)
     return file.read_text(encoding="utf-8"), str(file)
 
