@@ -133,7 +133,7 @@ wheels = [
 
 [[package]]
 name = "handcalcs"
-version = "2.0.0rc5"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "innerscope" },
@@ -141,9 +141,9 @@ dependencies = [
     { name = "pfst" },
     { name = "platformdirs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/54/2983e27d70ef84c9975594207736428bf45d20b2fdbd1d32f530c287f964/handcalcs-2.0.0rc5.tar.gz", hash = "sha256:a2dc163679559f45c3064f8841c5c234fb6aa7516744ea70a01c7eb666266dba", size = 191089, upload-time = "2026-11-19T02:44:15.44Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/4f/ad909f386fec25bc9034d2ca4f26fe9422f976ec2715c04c76b0aae5d55e/handcalcs-2.0.0.tar.gz", hash = "sha256:6f189c404c630c4e0117284d6de6ac357c5e2f074d49293c558d99f3dcb3764a", size = 200195, upload-time = "2026-11-24T06:40:05.123Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/87/4ec1aa695871478acfd9d73ba2c6a2510a0c0d3ad1284554b21c938a8b52/handcalcs-2.0.0rc5-py3-none-any.whl", hash = "sha256:0e4d955cf66a285e98d71d12eceda8021df6a8e5460aa8de2509695186ccbbe0", size = 215655, upload-time = "2026-11-19T02:44:13.555Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/65/85a67390085518743e17ac1c4b80e562f3de7d92ff6474bbbd0689e83ac5/handcalcs-2.0.0-py3-none-any.whl", hash = "sha256:4e25ab4bd3c2a9897a9dc5b4ad765b66b1632d1f07b2c8c6385f4a173862d9da", size = 225095, upload-time = "2026-11-24T06:40:03.445Z" },
 ]
 
 [[package]]
@@ -778,7 +778,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "handcalcs", specifier = ">=2.0.0rc5" },
+    { name = "handcalcs", specifier = ">=2.0.0" },
     { name = "reportlab", specifier = ">=4.5.1" },
     { name = "wenmode", specifier = ">=0.15.3" },
 ]
@@ -787,12 +787,12 @@ requires-dist = [
 dev = [
     { name = "numpy", specifier = ">=2.3.0" },
     { name = "pytest", specifier = ">=9.0.3" },
-    { name = "ymprint", specifier = ">=0.11.0" },
+    { name = "ymprint", specifier = ">=0.15.2" },
 ]
 
 [[package]]
 name = "ymprint"
-version = "0.11.0"
+version = "0.15.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
@@ -806,7 +806,7 @@ dependencies = [
     { name = "typer" },
     { name = "wenmode" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6a/9a/b96deb448d1dcf70ac81b7e23ae052d62d4052b4109ad50332616093f868/ymprint-0.11.0.tar.gz", hash = "sha256:c9472db1d26c1b3b2d142060e4f541470edb1984ed1bee9a619abf5933724630", size = 9949376, upload-time = "2026-11-07T21:09:43.354Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/14/c3c6fbd9384929f2ebcc628e186296c3c128bbd8859543e4b0312ac0ef17/ymprint-0.15.2.tar.gz", hash = "sha256:d8da43636d721661387a953957e104891d7cf8330cb9fb4f996d2bbeb948195d", size = 9953991, upload-time = "2026-11-24T06:20:30.779Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/03/e413cec8874f5218bc714a099fffbe54511cb6db33b5b1ebe96cdc511ce0/ymprint-0.11.0-py3-none-any.whl", hash = "sha256:fd2d2ff6a8b8da93b8a90cf60e189dd583dead2bda03fa5ca1d18996728da2ae", size = 9968939, upload-time = "2026-11-07T21:09:41.093Z" },
+    { url = "https://files.pythonhosted.org/packages/39/0e/d2a75f8b3ddd47cdeb2d4471c2409a43b4efa07fff693ae09af4d4237233/ymprint-0.15.2-py3-none-any.whl", hash = "sha256:66abcf61b2fea48d15989e07ebdad444b51d2b060158be0a315a18449c767f64", size = 9972868, upload-time = "2026-11-24T06:20:28.144Z" },
 ]
