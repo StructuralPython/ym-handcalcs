@@ -1023,7 +1023,7 @@ def test_matrices_are_written_inline_where_they_cannot_be_drawn():
 
 # -- fractions --------------------------------------------------------------------
 
-from ym_handcalcs.flowables import Bracket, FractionFlowable, inline_fractions, text_axis
+from ym_handcalcs.flowables import Bracket, FractionFlowable, Raised, inline_fractions, leading_superscript, text_axis
 
 
 def calc_lines(story: list) -> list[CalcLine]:
@@ -1093,6 +1093,42 @@ def test_brackets_around_a_fraction_are_stretched():
     row.wrap(1e6, 1e6)
     fraction = next(part for part in row.parts if isinstance(part, FractionFlowable))
     assert all(b.height > fraction.height for b in brackets)
+
+
+def test_an_exponent_after_a_tall_bracket_is_lifted_to_its_top():
+    # (d / 2)**2: the 2 belongs to the stretched bracket, so it sits on the
+    # bracket's top, not at plain-text superscript height beside the fraction.
+    line = last_line("d = 600\nA = (d / 2)**2 + 1\n")
+    row = value_row(line)
+    row.wrap(1e6, 1e6)
+    exponent = next(part for part in row.parts if isinstance(part, Raised))
+    bracket = row.parts[row.raised[row.parts.index(exponent)]]
+    assert exponent.paragraph.text == "<sup>2</sup>" and bracket.char == ")"
+    assert exponent.lift > 0
+    # The exponent's top-of-text line meets the bracket's top.
+    text_top = exponent.paragraph.height - text_axis(exponent.paragraph)
+    assert exponent.lift + text_top == pytest.approx(bracket.above)
+    # The text after the exponent keeps its spaces (`` + 1``).
+    after = row.parts[row.parts.index(exponent) + 1]
+    assert isinstance(after, Paragraph) and after.text.startswith(NBSP + "+")
+
+
+def test_an_exponent_without_a_tall_bracket_stays_in_the_text():
+    line = last_line("a = 3\nb = 4\nc = (a + b)**2 / 2\n")
+    row = value_row(line)
+    assert not [part for part in row.parts if isinstance(part, Raised)]
+
+
+def test_leading_superscript_splits_off_a_balanced_exponent():
+    assert leading_superscript("<sup>2</sup> + 1") == ("<sup>2</sup>", " + 1")
+    assert leading_superscript("<sup>2<sup>1</sup></sup> = x") == ("<sup>2<sup>1</sup></sup>", " = x")
+    # Tags open before the exponent are closed after it and reopened for the rest.
+    tags = '<font color="#0b5f66"><b>'
+    assert leading_superscript(f"{tags}<sup>2</sup> m</b></font>") == (
+        f"{tags}<sup>2</sup></b></font>", f"{tags} m</b></font>"
+    )
+    assert leading_superscript(" + <sup>2</sup>") is None
+    assert leading_superscript("<b>x</b>") is None
 
 
 def test_brackets_without_a_fraction_inside_stay_text():
