@@ -1049,6 +1049,18 @@ def test_a_division_is_a_stacked_fraction():
     assert spelled(line) == ["x", "frac(a + b, 2)", "frac(3 + 4, 2)", "3.5"]
 
 
+def test_a_fraction_repeated_in_the_next_column_is_dropped():
+    # A literal division reads the same symbolically and with its numbers in:
+    # the stacked fraction is shown once (each fraction is its own token, so the
+    # columns are compared with the tokens written out).
+    assert spelled(last_line("x = 3 / 4\n")) == ["x", "frac(3, 4)", "0.75"]
+    assert spelled(last_line("y = (1 / 2) / 4\n")) == ["y", "frac(frac(1, 2), 4)", "0.125"]
+
+
+def test_different_fractions_are_both_kept():
+    assert spelled(last_line("a = 3\nb = 4\nx = a / b\n")) == ["x", "frac(a, b)", "frac(3, 4)", "0.75"]
+
+
 def test_fractions_inline_writes_a_slash():
     line = last_line("a = 3\nb = 4\nx = (a + b) / 2\n", fractions="inline")
     assert line.columns[:2] == ["x", "(a + b) / 2"]
