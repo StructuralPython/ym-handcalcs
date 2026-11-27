@@ -220,6 +220,21 @@ class ReportLabRenderer(BaseRenderer):
         # A mixed list (e.g. a grid wrapped by ``render_block_body``): join each part.
         return [_Placed(f) for f in self.join_items(item, depth, base_context)]
 
+    def same_column(self, column, other) -> bool:
+        """
+        Columns that read the same, so handcalcs drops the second
+        (``w = 7.5 · kN / m = 7.5 kN/m``, not the stacked fraction twice). Each
+        fraction or matrix is a token with its own key, so compare the columns
+        with every token written out.
+        """
+        if column == other:
+            return True
+        if not (isinstance(column, str) and isinstance(other, str)):
+            return False
+        if MATRIX_OPEN not in column and MATRIX_OPEN not in other:
+            return False
+        return inline_matrices(column, self.matrices) == inline_matrices(other, self.matrices)
+
     def join_items(self, items: list, depth: int, base_context: BaseRenderContext) -> list:
         return self.merge_calc_runs(super().join_items(items, depth, base_context))
 
