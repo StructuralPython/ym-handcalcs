@@ -1029,9 +1029,25 @@ class MathRow(Flowable):
         pieces = matrix_segments(markup, brackets=has_fraction(markup, matrices))
         tall = _tall_brackets(pieces, matrices)
         stretched = {i for pair in tall.items() for i in pair}
+        closers = set(tall.values())
         part_of: dict[int, int] = {}  # piece index -> part index
+        # An exponent part (``Raised``) -> the stretched closing bracket it follows.
+        self.raised: dict[int, int] = {}
         for idx, piece in enumerate(pieces):
             part_of[idx] = len(self.parts)
+            if piece[0] == "text" and idx - 1 in closers:
+                # ``(a / b)<sup>2</sup>``: the exponent belongs to the tall
+                # bracket, so it is lifted to the bracket's top (see ``wrap``).
+                split = leading_superscript(piece[1])
+                if split is not None:
+                    exponent, rest = split
+                    self.raised[len(self.parts)] = part_of[idx - 1]
+                    self.parts.append(Raised(Paragraph(exponent, text_style)))
+                    if re.sub(r"<[^>]+>", "", rest):
+                        text = re.sub(r"^((?:<[^>]+>)*) ", rf"\1{NBSP}", rest)
+                        text = re.sub(r" ((?:<[^>]+>)*)$", rf"{NBSP}\1", text)
+                        self.parts.append(Paragraph(text, text_style))
+                    continue
             if piece[0] == "text":
                 # A paragraph drops the spaces at its ends; keep the ones that
                 # separate this piece from a matrix (`` = ``, `` @ ``).
@@ -1082,6 +1098,13 @@ class MathRow(Flowable):
             for i in (open_idx, close_idx):
                 self.parts[i].above, self.parts[i].below = above + pad, below + pad
                 self._sizes[i] = self.parts[i].wrap(1e6, 1e6)
+        for idx, bracket_idx in self.raised.items():
+            # Lift the exponent so it sits on the bracket's top as it would on a
+            # plain line of text: its top-of-text line meets the bracket's top.
+            part = self.parts[idx]
+            text_top = part.paragraph.height - text_axis(part.paragraph)
+            part.lift = max(0.0, self.parts[bracket_idx].above - text_top)
+            self._sizes[idx] = part.wrap(1e6, 1e6)
         axes = [axis_of(part) for part in self.parts]
         below = max(axes, default=0.0)
         above = max((h - a for (_, h), a in zip(self._sizes, axes)), default=0.0)
@@ -1105,6 +1128,61 @@ class MathRow(Flowable):
         for part, (width, _) in zip(self.parts, self._sizes):
             part.drawOn(self.canv, x, self.axis - axis_of(part))
             x += width
+
+
+class Raised(Flowable):
+    """A one-line paragraph (an exponent) drawn ``lift`` points higher than its axis puts it."""
+
+    def __init__(self, paragraph: Paragraph):
+        super().__init__()
+        self.paragraph = paragraph
+        self.lift = 0.0  # set by ``MathRow.wrap``
+
+    def wrap(self, avail_width, avail_height):
+        self.width, height = _measure(self.paragraph)
+        self.height = height + self.lift
+        self.axis = text_axis(self.paragraph)
+        return self.width, self.height
+
+    def draw(self):
+        self.paragraph.drawOn(self.canv, 0, self.lift)
+
+
+_TAG = re.compile(r"<(/?)([a-zA-Z]+)[^>]*?(/?)>")
+
+
+def leading_superscript(markup: str) -> tuple[str, str] | None:
+    """
+    Split ``markup`` that starts (after any opening tags) with a ``<sup>`` into
+    ``(exponent, rest)``, each balanced: the tags open before the ``<sup>`` are
+    closed after it and reopened for the rest. ``None`` if it does not start so.
+    """
+    position = 0
+    opened: list[tuple[str, str]] = []
+    while True:
+        match = _TAG.match(markup, position)
+        if match is None or match.group(1):
+            return None
+        if match.group(2) in ("sup", "super"):
+            break
+        opened.append((match.group(2), match.group(0)))
+        position = match.end()
+    start, depth = position, 0
+    for match in _TAG.finditer(markup, start):
+        if match.group(3):
+            continue
+        if match.group(2) not in ("sup", "super"):
+            continue
+        depth += -1 if match.group(1) else 1
+        if depth == 0:
+            end = match.end()
+            break
+    else:
+        return None
+    open_tags = "".join(tag for _, tag in opened)
+    close_tags = "".join(f"</{name}>" for name, _ in reversed(opened))
+    exponent = f"{open_tags}{markup[start:end]}{close_tags}"
+    return exponent, f"{open_tags}{markup[end:]}"
 
 
 def _tall_brackets(pieces: list, matrices: dict) -> dict[int, int]:
